@@ -206,9 +206,16 @@ done
 if [ "$SHOW_WIZARD" = true ]; then
     exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_wizard.py"
 elif [ "$SHOW_MANAGER" = true ] && [ "$DIRECT_MODE" = false ]; then
-    # Qt manager is crashing, fall back to direct launch
-    echo "🌐 Starting ComfyUI directly (Qt manager disabled due to crash)"
-    DIRECT_MODE=true
+    # Try Qt manager with improved error handling
+    echo "🎨 Attempting to launch Qt Manager (with improved debugging)"
+    if "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_qt_manager.py"; then
+        echo "✅ Qt Manager launched successfully"
+        exit 0
+    else
+        echo "❌ Qt Manager failed, falling back to direct launch"
+        echo "🌐 Starting ComfyUI directly (Qt manager fallback)"
+        DIRECT_MODE=true
+    fi
 fi
 
 # If we reach here, start ComfyUI directly

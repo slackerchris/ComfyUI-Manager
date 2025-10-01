@@ -541,9 +541,17 @@ class ComfyUIManager(QMainWindow):
                 QMessageBox.information(self, "Already Running", "ComfyUI is already running!")
                 return
                 
+            self.log_display.append("🚀 Preparing to start ComfyUI...")
+            
             # Build command
             python_exe = os.path.join(self.appdir, "usr", "bin", "python3")
             main_py = os.path.join(self.appdir, "app", "main.py")
+            
+            # Validate paths exist
+            if not os.path.exists(python_exe):
+                raise FileNotFoundError(f"Python executable not found: {python_exe}")
+            if not os.path.exists(main_py):
+                raise FileNotFoundError(f"ComfyUI main.py not found: {main_py}")
             
             host = self.host_input.text()
             port = self.port_input.value()
@@ -558,30 +566,65 @@ class ComfyUIManager(QMainWindow):
             if self.auto_open_browser_check.isChecked():
                 cmd.append("--auto-launch")
                 
-            # Set environment
+            self.log_display.append(f"📋 Command: {' '.join(cmd[:3])} [args...]")
+                
+            # Set environment carefully
             env = os.environ.copy()
             env.update({
                 'PYTHONHOME': os.path.join(self.appdir, "usr"),
                 'PYTHONPATH': os.path.join(self.appdir, "usr", "lib", "python3.12", "site-packages"),
-                'LD_LIBRARY_PATH': os.path.join(self.appdir, "usr", "lib")
+                'LD_LIBRARY_PATH': os.path.join(self.appdir, "usr", "lib"),
+                # Prevent Qt conflicts
+                'QT_PLUGIN_PATH': '',
+                'QML2_IMPORT_PATH': '',
+                # Prevent process inheritance issues
+                'PYTHONDONTWRITEBYTECODE': '1'
             })
             
-            # Start process
+            self.log_display.append("🔧 Environment configured, starting process...")
+            
+            # Start process with careful isolation
             self.comfyui_process = subprocess.Popen(
                 cmd, 
                 cwd=os.path.join(self.appdir, "app"),
                 env=env,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
+                stderr=subprocess.PIPE,  # Separate stderr to avoid blocking
+                text=True,
+                start_new_session=True,  # Start in new process group
+                preexec_fn=os.setsid if hasattr(os, 'setsid') else None  # Unix process isolation
             )
             
-            self.log_display.append(f"Started ComfyUI (PID: {self.comfyui_process.pid})")
-            self.status_bar.showMessage("Starting ComfyUI...")
+            self.log_display.append(f"✅ Started ComfyUI (PID: {self.comfyui_process.pid})")
+            self.status_bar.showMessage(f"ComfyUI starting (PID: {self.comfyui_process.pid})")
+            
+            # Monitor the process startup
+            QTimer.singleShot(2000, self.check_startup_success)
             
         except Exception as e:
-            QMessageBox.critical(self, "Start Error", f"Failed to start ComfyUI:\n{e}")
-            self.log_display.append(f"Start error: {e}")
+            error_msg = f"Failed to start ComfyUI: {str(e)}"
+            self.log_display.append(f"❌ {error_msg}")
+            QMessageBox.critical(self, "Start Error", error_msg)
+            print(f"ComfyUI Manager - Start Error: {e}")  # Debug output
+    
+    def check_startup_success(self):
+        """Check if ComfyUI started successfully"""
+        try:
+            if hasattr(self, 'comfyui_process') and self.comfyui_process:
+                return_code = self.comfyui_process.poll()
+                if return_code is not None:
+                    # Process has already terminated
+                    stdout, stderr = self.comfyui_process.communicate()
+                    self.log_display.append(f"⚠️ ComfyUI process terminated with code: {return_code}")
+                    if stdout:
+                        self.log_display.append(f"📄 Output: {stdout[:200]}...")
+                    if stderr:
+                        self.log_display.append(f"🚨 Error: {stderr[:200]}...")
+                else:
+                    self.log_display.append("✅ ComfyUI process running successfully")
+                    
+        except Exception as e:
+            self.log_display.append(f"⚠️ Startup check error: {e}")
             
     def stop_comfyui(self):
         """Stop ComfyUI process"""
@@ -712,13 +755,41 @@ class ComfyUIManager(QMainWindow):
             
     def quit_application(self):
         """Quit the application completely"""
-        self.process_monitor.stop()
-        self.process_monitor.wait()
-        QApplication.quit()
+        try:
+            self.log_display.append("🔴 Manager shutting down...")
+            
+            # Stop ComfyUI first if running
+            try:
+                self.stop_comfyui()
+            except Exception as e:
+                print(f"Error stopping ComfyUI during quit: {e}")
+            
+            # Stop monitoring
+            if hasattr(self, 'process_monitor'):
+                self.process_monitor.stop()
+                self.process_monitor.wait(1000)  # Wait up to 1 second
+                
+        except Exception as e:
+            print(f"Error during application quit: {e}")
+        finally:
+            QApplication.quit()
 
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """Global exception handler to prevent unexpected crashes"""
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+        
+    print(f"ComfyUI Manager - Unhandled exception: {exc_type.__name__}: {exc_value}")
+    import traceback
+    traceback.print_exception(exc_type, exc_value, exc_traceback)
 
 def main():
     """Main application entry point"""
+    # Install global exception handler
+    sys.excepthook = handle_exception
+    
     app = QApplication(sys.argv)
     app.setApplicationName("ComfyUI Manager")
     app.setApplicationVersion("2.0.0")
