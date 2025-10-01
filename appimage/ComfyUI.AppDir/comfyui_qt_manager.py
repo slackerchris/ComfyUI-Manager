@@ -435,12 +435,48 @@ class ComfyUIManager(QMainWindow):
         # Set tray icon (create a simple icon if none exists)
         icon = self.create_tray_icon()
         self.tray_icon.setIcon(icon)
+        self.tray_icon.setToolTip("ComfyUI Manager")
         self.tray_icon.show()
         
     def create_tray_icon(self):
-        """Create a simple tray icon"""
-        pixmap = QPixmap(16, 16)
-        pixmap.fill(Qt.green)
+        """Create ComfyUI tray icon"""
+        # Try to load our custom ComfyUI icon first
+        app_dir = os.getenv('APPDIR', os.path.dirname(os.path.abspath(__file__)))
+        icon_paths = [
+            os.path.join(app_dir, 'comfyui.png'),
+            os.path.join(app_dir, 'comfyui.svg'),
+            os.path.join(os.path.dirname(__file__), 'comfyui.png'),
+            os.path.join(os.path.dirname(__file__), 'comfyui.svg')
+        ]
+        
+        for icon_path in icon_paths:
+            if os.path.exists(icon_path):
+                return QIcon(icon_path)
+        
+        # Fallback: Create a ComfyUI-themed icon
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        
+        # Draw a simple ComfyUI node-like icon
+        from PySide6.QtGui import QPainter, QPen, QBrush
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw background circle
+        painter.setBrush(QBrush(Qt.darkBlue))
+        painter.setPen(QPen(Qt.blue, 2))
+        painter.drawEllipse(4, 4, 24, 24)
+        
+        # Draw node connections
+        painter.setPen(QPen(Qt.white, 2))
+        painter.drawLine(8, 12, 16, 12)  # Input
+        painter.drawLine(16, 20, 24, 20)  # Output
+        
+        # Draw central node
+        painter.setBrush(QBrush(Qt.cyan))
+        painter.drawEllipse(12, 8, 8, 8)
+        
+        painter.end()
         return QIcon(pixmap)
         
     def setup_monitoring(self):
@@ -469,11 +505,19 @@ class ComfyUIManager(QMainWindow):
             self.memory_label.setText(f"Memory: {memory:.1f} MB")
             self.cpu_label.setText(f"CPU: {cpu:.1f}%")
             
+            # Update tray tooltip with running status
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                self.tray_icon.setToolTip(f"ComfyUI Manager - Running ({count} processes)")
+            
         else:
             self.status_label.setText("🔴 Not Running")
             self.process_info_label.setText("No processes found")
             self.memory_label.setText("Memory: 0 MB")
             self.cpu_label.setText("CPU: 0%")
+            
+            # Update tray tooltip with stopped status
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                self.tray_icon.setToolTip("ComfyUI Manager - Stopped")
             
     def update_ui_state(self):
         """Update UI button states based on process status"""
@@ -681,8 +725,20 @@ def main():
     app.setQuitOnLastWindowClosed(False)
     
     # Set application icon
+    app_dir = os.getenv('APPDIR', os.path.dirname(os.path.abspath(__file__)))
+    icon_paths = [
+        os.path.join(app_dir, 'comfyui.png'),
+        os.path.join(app_dir, 'comfyui.svg'),
+        os.path.join(os.path.dirname(__file__), 'comfyui.png'),
+        os.path.join(os.path.dirname(__file__), 'comfyui.svg')
+    ]
+    
     app_icon = QIcon()
-    # You could add an icon file here
+    for icon_path in icon_paths:
+        if os.path.exists(icon_path):
+            app_icon = QIcon(icon_path)
+            break
+    
     app.setWindowIcon(app_icon)
     
     manager = ComfyUIManager()
