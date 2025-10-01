@@ -9,9 +9,21 @@
 
 ## 🚀 Quick Start
 
+### Option 1: Build from Source (Recommended)
 ```bash
-# Download and run the AppImage
-wget https://github.com/slackerchris/ComfyUI-Manager/releases/latest/download/ComfyUI-Manager-v2.0.5-x86_64.AppImage
+# Clone and build your own AppImage
+git clone https://github.com/slackerchris/ComfyUI-Manager.git
+cd ComfyUI-Manager
+# Follow build instructions in appimage/README.md
+```
+
+### Option 2: Pre-built AppImage (Large Download)
+```bash
+# Note: AppImage is 4.3GB (exceeds GitHub's 2GB limit)
+# Contact repository owner for direct download link
+# Or use cloud storage/torrent distribution
+
+# Once downloaded:
 chmod +x ComfyUI-Manager-v2.0.5-x86_64.AppImage
 ./ComfyUI-Manager-v2.0.5-x86_64.AppImage
 ```
@@ -68,6 +80,25 @@ This project evolved from a simple request: *"I would like help setting up an ap
 - **v2.0.2** - Qt manager crash fixes
 - **v2.0.1** - Initial hotfix release
 - **v2.0.0** - First Qt manager implementation
+
+## 📦 Distribution Options
+
+### GitHub Limitations
+The AppImage (4.3GB) exceeds GitHub's 2GB file limit. Alternative distribution methods:
+
+1. **Build from Source** - Clone this repository and build locally (see `appimage/BUILD.md`)
+2. **Cloud Storage** - Google Drive, Dropbox, OneDrive sharing
+3. **Torrent Distribution** - P2P sharing for large files
+4. **Self-Hosting** - Host on personal server/website
+5. **Alternative Platforms** - SourceForge, GitLab (larger file limits)
+
+### For Repository Owner
+To distribute the AppImage:
+```bash
+# Example: Upload to cloud storage and share link
+# Or set up torrent with .torrent file in releases
+# Or use alternative git hosting with larger limits
+```
 
 ## 🤝 Contributing
 
