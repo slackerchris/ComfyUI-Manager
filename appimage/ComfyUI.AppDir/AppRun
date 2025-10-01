@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+
+# Enhanced AppImage AppRun script for ComfyUI
+# Features: GPU detection, configuration wizard, AI video support
+
+# Get the directory where the AppImage is located
+HERE="$(dirname "$(readlink -f "${0}")")"
+
+# Set environment variables
+export APPDIR="$HERE"
+export PATH="${APPDIR}/usr/bin:${APPDIR}/bin:${PATH}"
+export LD_LIBRARY_PATH="${APPDIR}/usr/lib:${APPDIR}/lib:${LD_LIBRARY_PATH}"
+
+# Auto-detect Python version in AppDir
+PYTHON_VERSION=$(find "${APPDIR}/usr/lib" -maxdepth 1 -name "python*" -type d | head -1)
+PYTHON_VERSION=$(basename "$PYTHON_VERSION" 2>/dev/null || echo "")
+if [ -z "$PYTHON_VERSION" ]; then
+    # Fallback detection methods
+    if [ -d "${APPDIR}/usr/lib/python3.12" ]; then
+        PYTHON_VERSION="python3.12"
+    elif [ -d "${APPDIR}/usr/lib/python3.11" ]; then
+        PYTHON_VERSION="python3.11"
+    elif [ -d "${APPDIR}/usr/lib/python3.10" ]; then
+        PYTHON_VERSION="python3.10"
+    else
+        PYTHON_VERSION="python3.12"  # ultimate fallback
+    fi
+fi
+
+# Set Python environment with proper paths
+export PYTHONHOME="${APPDIR}/usr"
+export PYTHONPATH="${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages:${APPDIR}/app"
+
+# Ensure Python can find its standard library
+if [ -d "${APPDIR}/usr/lib/${PYTHON_VERSION}" ]; then
+    export PYTHONPATH="${PYTHONPATH}:${APPDIR}/usr/lib/${PYTHON_VERSION}"
+fi
+
+# Try to find SSL certificates
+for cert_path in \
+    "${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages/certifi/cacert.pem" \
+    "${APPDIR}/opt/${PYTHON_VERSION}/lib/${PYTHON_VERSION}/site-packages/certifi/cacert.pem" \
+    "/etc/ssl/certs/ca-certificates.crt" \
+    "/etc/ssl/certs/ca-bundle.crt"; do
+    if [ -f "$cert_path" ]; then
+        export SSL_CERT_FILE="$cert_path"
+        break
+    fi
+done
+
+# Set ComfyUI specific environment variables
+export HF_HUB_DISABLE_TELEMETRY=1
+export DO_NOT_TRACK=1
+
+# Create user directories if they don't exist
+USER_CONFIG_DIR="${HOME}/.config/ComfyUI"
+USER_MODELS_DIR="${HOME}/.local/share/ComfyUI"
+mkdir -p "$USER_CONFIG_DIR" "$USER_MODELS_DIR"
+
+# Create model subdirectories for AI video generation
+mkdir -p "$USER_MODELS_DIR"/{checkpoints,vae,loras,embeddings,controlnet,animatediff,video_models}
+
+# Create writable directories for ComfyUI components that need write access
+COMFYUI_TEMP_DIR="${USER_CONFIG_DIR}/temp"
+COMFYUI_INPUT_DIR="${USER_CONFIG_DIR}/input"
+COMFYUI_OUTPUT_DIR="${USER_CONFIG_DIR}/output"
+COMFYUI_DB_DIR="${USER_CONFIG_DIR}/db"
+mkdir -p "$COMFYUI_TEMP_DIR" "$COMFYUI_INPUT_DIR" "$COMFYUI_OUTPUT_DIR" "$COMFYUI_DB_DIR"
+
+# Create 3D input subdirectories to prevent read-only filesystem errors
+mkdir -p "$COMFYUI_INPUT_DIR"/{3d,clips,images}
+
+# Export environment variables for ComfyUI to use writable paths
+export COMFYUI_TEMP_DIR
+export COMFYUI_INPUT_DIR  
+export COMFYUI_OUTPUT_DIR
+
+# Function to detect GPU
+detect_gpu() {
+    local gpu_type="cpu"
+    local gpu_args=""
+    
+    # Check for NVIDIA GPU with timeout
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        if timeout 5s nvidia-smi >/dev/null 2>&1; then
+            echo "✓ NVIDIA GPU detected" >&2
+            gpu_type="cuda"
+            # Check VRAM with timeout and error handling
+            local vram=$(timeout 3s nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d '[:space:]')
+            if [[ "$vram" =~ ^[0-9]+$ ]] && [ "$vram" -lt 6000 ]; then
+                gpu_args="--lowvram"
+                echo "  - Low VRAM mode enabled (<6GB)" >&2
+            elif [ "$vram" -lt 12000 ]; then
+                gpu_args="--normalvram"
+                echo "  - Normal VRAM mode enabled (6-12GB)" >&2
+            else
+                gpu_args="--highvram"
+                echo "  - High VRAM mode enabled (>12GB)" >&2
+            fi
+        fi
+    fi
+    
+    # Check for AMD GPU
+    if [ "$gpu_type" = "cpu" ]; then
+        if command -v rocm-smi >/dev/null 2>&1; then
+            if rocm-smi >/dev/null 2>&1; then
+                echo "✓ AMD GPU detected (ROCm support limited)" >&2
+                gpu_type="rocm"
+            fi
+        elif lspci 2>/dev/null | grep -i 'vga.*amd\|vga.*ati' >/dev/null; then
+            echo "⚠ AMD GPU detected but ROCm not available" >&2
+        fi
+    fi
+    
+    # Fallback to CPU
+    if [ "$gpu_type" = "cpu" ]; then
+        echo "⚠ No supported GPU detected, using CPU mode" >&2
+        gpu_args="--cpu"
+    fi
+    
+    echo "$gpu_type:$gpu_args"
+}
+
+# Function to show configuration wizard
+show_wizard() {
+    if [ -x "${APPDIR}/usr/bin/python3" ] && python3 -c "import tkinter" 2>/dev/null; then
+        echo "Starting ComfyUI Configuration Wizard..."
+        python3 "${APPDIR}/comfyui_wizard.py"
+        return $?
+    else
+        echo "GUI not available, using automatic configuration"
+        return 1
+    fi
+}
+
+# Change to the ComfyUI directory
+cd "${APPDIR}/app" || exit 1
+
+# Parse arguments
+AUTO_LAUNCH=""
+SHOW_WIZARD=false
+SHOW_MANAGER=true  # Default to GUI manager on double-click
+DIRECT_MODE=false
+EXTRA_ARGS=""
+GPU_OVERRIDE=""
+
+# If no arguments, launch GUI manager (perfect for double-click management)
+if [ $# -eq 0 ]; then
+    echo "🚀 ComfyUI AppImage - Starting..."
+    echo "================================="
+    echo "🎮 Launching GUI Management Interface"
+    echo "📋 Use this to start/stop/restart ComfyUI and manage models"
+    # SHOW_MANAGER=true and DIRECT_MODE=false are already set as defaults
+fi
+
+for arg in "$@"; do
+    case $arg in
+        --manager|--gui)
+            # Try GUI manager, fallback to web if tkinter not available
+            if python3 -c "import tkinter" 2>/dev/null; then
+                SHOW_MANAGER=true
+                DIRECT_MODE=false
+            else
+                echo "⚠️  GUI manager requires tkinter (try: sudo apt install python3-tk)"
+                echo "🌐 Launching web interface instead..."
+                AUTO_LAUNCH="--auto-launch"
+                DIRECT_MODE=true
+                SHOW_MANAGER=false
+            fi
+            ;;
+        --direct|--web)
+            SHOW_MANAGER=false
+            DIRECT_MODE=true
+            ;;
+        --auto-launch)
+            AUTO_LAUNCH="--auto-launch"
+            ;;
+        --wizard)
+            SHOW_WIZARD=true
+            SHOW_MANAGER=false
+            DIRECT_MODE=false
+            ;;
+        --video-setup)
+            # Launch video setup and exit
+            exec "${APPDIR}/usr/bin/python3" "${APPDIR}/video_setup.py"
+            ;;
+        --cpu|--force-cpu)
+            GPU_OVERRIDE="cpu:--cpu"
+            ;;
+        --cuda|--force-cuda)
+            GPU_OVERRIDE="cuda:"
+            ;;
+        --help|-h)
+            exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_launcher.py" --help-all
+            ;;
+        --help-all)
+            exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_launcher.py" --help-all
+            ;;
+        *)
+            EXTRA_ARGS="${EXTRA_ARGS} ${arg}"
+            ;;
+    esac
+done
+
+# Check if we should launch the manager or wizard
+if [ "$SHOW_WIZARD" = true ]; then
+    exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_wizard.py"
+elif [ "$SHOW_MANAGER" = true ] && [ "$DIRECT_MODE" = false ]; then
+    # Qt manager is crashing, fall back to direct launch
+    echo "🌐 Starting ComfyUI directly (Qt manager disabled due to crash)"
+    DIRECT_MODE=true
+fi
+
+# If we reach here, start ComfyUI directly
+
+# Check if this is first run or wizard requested
+FIRST_RUN_FILE="$USER_CONFIG_DIR/.comfyui_appimage_first_run"
+if [ ! -f "$FIRST_RUN_FILE" ] || [ "$SHOW_WIZARD" = true ]; then
+    echo "ComfyUI AppImage - First Time Setup"
+    echo "==================================="
+    
+    # Detect hardware if not overridden
+    if [ -z "$GPU_OVERRIDE" ]; then
+        echo "Detecting hardware..."
+        GPU_INFO=$(detect_gpu)
+        GPU_OVERRIDE="$GPU_INFO"
+    fi
+    
+    # Show wizard if available and requested
+    if [ "$SHOW_WIZARD" = true ]; then
+        if show_wizard; then
+            echo "Configuration wizard completed"
+        else
+            echo "Wizard not available, using automatic configuration"
+        fi
+    fi
+    
+    # Mark first run as complete
+    touch "$FIRST_RUN_FILE"
+    echo "Setup complete!"
+    echo ""
+fi
+
+# Extract GPU settings
+if [ -n "$GPU_OVERRIDE" ]; then
+    GPU_TYPE=$(echo "$GPU_OVERRIDE" | cut -d: -f1)
+    GPU_ARGS=$(echo "$GPU_OVERRIDE" | cut -d: -f2-)
+else
+    GPU_INFO=$(detect_gpu)
+    GPU_TYPE=$(echo "$GPU_INFO" | cut -d: -f1)
+    GPU_ARGS=$(echo "$GPU_INFO" | cut -d: -f2-)
+fi
+
+# Build final arguments
+FINAL_ARGS="--listen 127.0.0.1 --port 8188 --user-directory $USER_CONFIG_DIR"
+
+# Set database to writable location
+DATABASE_PATH="${COMFYUI_DB_DIR}/comfyui.db"
+FINAL_ARGS="$FINAL_ARGS --database-url sqlite:///${DATABASE_PATH}"
+
+# Add GPU-specific arguments
+if [ -n "$GPU_ARGS" ]; then
+    FINAL_ARGS="$FINAL_ARGS $GPU_ARGS"
+fi
+
+# Add model paths configuration if it exists
+MODEL_CONFIG="$USER_CONFIG_DIR/extra_model_paths.yaml"
+if [ -f "$MODEL_CONFIG" ]; then
+    FINAL_ARGS="$FINAL_ARGS --extra-model-paths-config $MODEL_CONFIG"
+fi
+
+# Add auto-launch
+if [ -n "$AUTO_LAUNCH" ]; then
+    FINAL_ARGS="$FINAL_ARGS $AUTO_LAUNCH"
+fi
+
+# Add extra arguments
+if [ -n "$EXTRA_ARGS" ]; then
+    FINAL_ARGS="$FINAL_ARGS $EXTRA_ARGS"
+fi
+
+# Display startup information
+echo "Starting ComfyUI with configuration:"
+echo "  GPU Mode: $GPU_TYPE"
+echo "  Arguments: $FINAL_ARGS"
+echo "  Web Interface: http://127.0.0.1:8188"
+echo ""
+echo "AI Video Generation Features Available:"
+echo "  - Text-to-Video with AnimateDiff"
+echo "  - Image-to-Video with Stable Video Diffusion"
+echo "  - Advanced video workflows via custom nodes"
+echo ""
+
+# Set additional environment variables for proper database operation
+export COMFYUI_USER_DIR="$USER_CONFIG_DIR"
+export TMPDIR="$COMFYUI_TEMP_DIR"
+export TMP="$COMFYUI_TEMP_DIR"
+export TEMP="$COMFYUI_TEMP_DIR"
+
+# Start ComfyUI
+cd "${APPDIR}/app"
+exec "${APPDIR}/usr/bin/python3" main.py $FINAL_ARGS

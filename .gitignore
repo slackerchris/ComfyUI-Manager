@@ -24,3 +24,38 @@ web_custom_versions/
 openapi.yaml
 filtered-openapi.yaml
 uv.lock
+
+# AppImage binaries (too large for GitHub)
+*.AppImage
+
+# Build artifacts and large directories
+appimage/ComfyUI.AppDir/usr/
+appimage/squashfs-root/
+appimage/build-complete/
+
+# Python packages (rebuilt during AppImage creation)
+appimage/ComfyUI.AppDir/usr/lib/python*/site-packages/
+site-packages/
+
+# Large binary files
+*.so
+*.so.*
+
+# AppImage logs and test files
+appimage/*test*.log
+appimage/startup-test.log
+appimage/fixed-test-output.log
+
+# App submodule (ComfyUI core - reference original repo)
+appimage/ComfyUI.AppDir/app/
+
+# Pip installer
+appimage/get-pip.py
+
+# Keep these important AppImage files:
+!appimage/ComfyUI.AppDir/AppRun
+!appimage/ComfyUI.AppDir/comfyui_qt_manager.py
+!appimage/ComfyUI.AppDir/*.desktop
+!appimage/ComfyUI.AppDir/*.png
+!appimage/build-scripts/
+!appimage/README.md
