@@ -68,7 +68,7 @@ class ProcessMonitor(QThread):
     def run(self):
         while self.running:
             try:
-                processes = self.find_comfyui_processes()
+                processes = self.get_comfyui_status()
                 self.process_updated.emit(processes)
                 self.msleep(1000)  # Update every second
             except Exception as e:
@@ -77,8 +77,8 @@ class ProcessMonitor(QThread):
     def stop(self):
         self.running = False
         
-    def find_comfyui_processes(self) -> Dict:
-        """Find all ComfyUI related processes"""
+    def get_comfyui_status(self) -> Dict:
+        """Get detailed ComfyUI process status with statistics"""
         processes = []
         total_memory = 0
         total_cpu = 0
@@ -451,11 +451,16 @@ class ComfyUIManager(QMainWindow):
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.tray_icon_activated)
         
-        # Set tray icon (create a simple icon if none exists)
+        # Set tray icon with proper identification
         icon = self.create_tray_icon()
         self.tray_icon.setIcon(icon)
-        self.tray_icon.setToolTip("ComfyUI Manager")
+        
+        # Set detailed tooltip for system identification  
+        self.tray_icon.setToolTip("ComfyUI Manager v2.0.5\nProfessional Desktop Interface for ComfyUI")
+        
+        # Show tray icon
         self.tray_icon.show()
+        print("✅ System tray icon initialized with ComfyUI Manager branding")
         
     def create_tray_icon(self):
         """Create ComfyUI tray icon"""
@@ -526,7 +531,7 @@ class ComfyUIManager(QMainWindow):
             
             # Update tray tooltip with running status
             if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.setToolTip(f"ComfyUI Manager - Running ({count} processes)")
+                self.tray_icon.setToolTip(f"ComfyUI Manager v2.0.7 - Running ({count} processes)\nProfessional Desktop Interface for ComfyUI")
             
         else:
             self.status_label.setText("🔴 Not Running")
@@ -536,7 +541,7 @@ class ComfyUIManager(QMainWindow):
             
             # Update tray tooltip with stopped status
             if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.setToolTip("ComfyUI Manager - Stopped")
+                self.tray_icon.setToolTip("ComfyUI Manager v2.0.7 - Stopped\nProfessional Desktop Interface for ComfyUI")
             
     def update_ui_state(self):
         """Update UI button states based on process status"""
@@ -562,8 +567,16 @@ class ComfyUIManager(QMainWindow):
                 
             self.log_display.append("🚀 Preparing to start ComfyUI...")
             
-            # Build command
-            python_exe = os.path.join(self.appdir, "usr", "bin", "python3")
+            # Build command - detect if we're in AppImage or development mode
+            appimage_python = os.path.join(self.appdir, "usr", "bin", "python3")
+            if os.path.exists(appimage_python):
+                # Running inside AppImage
+                python_exe = appimage_python
+            else:
+                # Development mode - use system Python
+                python_exe = sys.executable
+                self.log_display.append(f"🔧 Development mode: using system Python {python_exe}")
+            
             main_py = os.path.join(self.appdir, "app", "main.py")
             
             # Validate paths exist
@@ -603,16 +616,30 @@ class ComfyUIManager(QMainWindow):
             self.log_display.append("🔧 Environment configured, starting process...")
             
             # Start process with careful isolation
-            self.comfyui_process = subprocess.Popen(
-                cmd, 
-                cwd=os.path.join(self.appdir, "app"),
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,  # Separate stderr to avoid blocking
-                text=True,
-                start_new_session=True,  # Start in new process group
-                preexec_fn=os.setsid if hasattr(os, 'setsid') else None  # Unix process isolation
-            )
+            try:
+                # Try with process isolation first
+                self.comfyui_process = subprocess.Popen(
+                    cmd, 
+                    cwd=os.path.join(self.appdir, "app"),
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,  # Separate stderr to avoid blocking
+                    text=True,
+                    start_new_session=True,  # Start in new process group
+                    preexec_fn=os.setsid if hasattr(os, 'setsid') else None  # Unix process isolation
+                )
+            except Exception as preexec_error:
+                self.log_display.append(f"⚠️ Process isolation failed, trying without: {preexec_error}")
+                # Fallback: start without preexec_fn
+                self.comfyui_process = subprocess.Popen(
+                    cmd, 
+                    cwd=os.path.join(self.appdir, "app"),
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    start_new_session=True
+                )
             
             self.log_display.append(f"✅ Started ComfyUI (PID: {self.comfyui_process.pid})")
             self.status_bar.showMessage(f"ComfyUI starting (PID: {self.comfyui_process.pid})")
@@ -658,19 +685,32 @@ class ComfyUIManager(QMainWindow):
                 try:
                     proc = psutil.Process(proc_info['pid'])
                     proc.terminate()
-                    self.log_display.append(f"Terminated process {proc_info['pid']}")
+                    self.log_display.append(f"✅ Terminated process {proc_info['pid']}")
                 except psutil.NoSuchProcess:
-                    pass
+                    self.log_display.append(f"⚠️ Process {proc_info['pid']} already terminated")
+                except Exception as e:
+                    self.log_display.append(f"❌ Error terminating process {proc_info['pid']}: {e}")
                     
             self.status_bar.showMessage("Stopping ComfyUI...")
+            self.log_display.append("🔄 ComfyUI stop requested")
             
         except Exception as e:
-            QMessageBox.critical(self, "Stop Error", f"Failed to stop ComfyUI:\n{e}")
+            error_msg = f"Failed to stop ComfyUI: {str(e)}"
+            self.log_display.append(f"❌ {error_msg}")
+            QMessageBox.critical(self, "Stop Error", error_msg)
+            print(f"ComfyUI Manager - Stop Error: {e}")  # Debug output
             
     def restart_comfyui(self):
         """Restart ComfyUI"""
-        self.stop_comfyui()
-        QTimer.singleShot(2000, self.start_comfyui)  # Wait 2 seconds then start
+        try:
+            self.log_display.append("🔄 Restarting ComfyUI...")
+            self.stop_comfyui()
+            QTimer.singleShot(2000, self.start_comfyui)  # Wait 2 seconds then start
+        except Exception as e:
+            error_msg = f"Failed to restart ComfyUI: {str(e)}"
+            self.log_display.append(f"❌ {error_msg}")
+            QMessageBox.critical(self, "Restart Error", error_msg)
+            print(f"ComfyUI Manager - Restart Error: {e}")  # Debug output
         
     def kill_all_comfyui(self):
         """Force kill all ComfyUI processes"""
@@ -786,7 +826,14 @@ class ComfyUIManager(QMainWindow):
             # Stop monitoring
             if hasattr(self, 'process_monitor'):
                 self.process_monitor.stop()
-                self.process_monitor.wait(1000)  # Wait up to 1 second
+                if self.process_monitor.isRunning():
+                    self.process_monitor.wait(2000)  # Wait up to 2 seconds
+                    if self.process_monitor.isRunning():
+                        self.process_monitor.terminate()  # Force terminate if needed
+                        
+            # Stop update timer
+            if hasattr(self, 'update_timer'):
+                self.update_timer.stop()
                 
         except Exception as e:
             print(f"Error during application quit: {e}")
@@ -806,13 +853,46 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 def main():
     """Main application entry point"""
+    # Set process name as early as possible (before Qt initialization)
+    process_name = "ComfyUI-Manager"
+    
+    # Method 1: Override sys.argv[0] immediately
+    sys.argv[0] = process_name
+    
+    # Method 2: Try to set process title via multiple approaches
+    try:
+        # Linux prctl method
+        import ctypes
+        import ctypes.util
+        libc = ctypes.CDLL(ctypes.util.find_library("c"))
+        PR_SET_NAME = 15
+        libc.prctl(PR_SET_NAME, process_name.encode('utf-8'), 0, 0, 0)
+        
+        # Platform-independent setproctitle (if available)
+        try:
+            import setproctitle
+            setproctitle.setproctitle(process_name)
+        except ImportError:
+            pass
+            
+        print(f"✅ Process name set to '{process_name}'")
+    except Exception as e:
+        print(f"⚠️ Process naming failed: {e}")
+    
     # Install global exception handler
     sys.excepthook = handle_exception
     
     app = QApplication(sys.argv)
+    
+    # Set comprehensive application identification
     app.setApplicationName("ComfyUI Manager")
-    app.setApplicationVersion("2.0.0")
+    app.setApplicationDisplayName("ComfyUI Manager")
+    app.setApplicationVersion("2.0.8")
+    app.setOrganizationName("ComfyUI")
+    # Note: Removed setOrganizationDomain to prevent "org.comfyui.python3" process name
     app.setQuitOnLastWindowClosed(False)
+    
+    # Process name was set earlier in main() function
     
     # Set application icon
     app_dir = os.getenv('APPDIR', os.path.dirname(os.path.abspath(__file__)))

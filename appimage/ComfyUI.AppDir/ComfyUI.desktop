@@ -1,21 +1,13 @@
-[Desktop Entry][Desktop Entry]
-
-Name=ComfyUIType=Application
-
-Comment=Professional AI Image Generation InterfaceName=ComfyUI
-
-Exec=AppRunComment=AI Image and Video Generation Interface
-
-Icon=comfyuiExec=AppRun
-
-Type=ApplicationIcon=ComfyUI
-
-Categories=Graphics;Photography;StartupNotify=true
-
-Terminal=falseNoDisplay=false
-
-StartupNotify=trueCategories=Graphics;Photography;
-
-StartupWMClass=ComfyUIStartupWMClass=ComfyUI
+[Desktop Entry]
+Name=ComfyUI Manager
+Comment=Professional AI Image Generation Interface
+Exec=AppRun
+Icon=comfyui
+Type=Application
+Categories=Graphics;Photography;
+Terminal=false
+NoDisplay=false
+StartupNotify=true
+StartupWMClass=ComfyUI
 Keywords=AI;Image;Generation;Stable;Diffusion;
 MimeType=image/png;image/jpeg;image/webp;

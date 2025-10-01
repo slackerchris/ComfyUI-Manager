@@ -207,19 +207,22 @@ if [ "$SHOW_WIZARD" = true ]; then
     exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_wizard.py"
 elif [ "$SHOW_MANAGER" = true ] && [ "$DIRECT_MODE" = false ]; then
     # Try Qt manager with improved error handling and proper environment
-    echo "🎨 Attempting to launch Qt Manager (with improved debugging)"
+    echo "🎨 Launching ComfyUI Manager v2.0.7"
     echo "🔧 Environment check:"
     echo "   PYTHONPATH: $PYTHONPATH"
     echo "   PYTHONHOME: $PYTHONHOME"
     echo "   APPDIR: $APPDIR"
     
-    # Ensure proper working directory and launch Qt Manager
+    # Use pre-built wrapper script to set process name before launching Python
+    WRAPPER_SCRIPT="${APPDIR}/qt_manager_wrapper.sh"
+    
+    # Ensure proper working directory and launch Qt Manager with branded process name
     cd "${APPDIR}"
-    if env PYTHONPATH="${PYTHONPATH}" PYTHONHOME="${PYTHONHOME}" "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_qt_manager.py"; then
-        echo "✅ Qt Manager launched successfully"
+    if env PYTHONPATH="${PYTHONPATH}" PYTHONHOME="${PYTHONHOME}" "$WRAPPER_SCRIPT" "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_qt_manager.py"; then
+        echo "✅ ComfyUI Manager launched successfully"
         exit 0
     else
-        echo "❌ Qt Manager failed, falling back to direct launch"
+        echo "❌ ComfyUI Manager failed, falling back to direct launch"
         echo "🌐 Starting ComfyUI directly (Qt manager fallback)"
         DIRECT_MODE=true
     fi
