@@ -206,9 +206,16 @@ done
 if [ "$SHOW_WIZARD" = true ]; then
     exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_wizard.py"
 elif [ "$SHOW_MANAGER" = true ] && [ "$DIRECT_MODE" = false ]; then
-    # Try Qt manager with improved error handling
+    # Try Qt manager with improved error handling and proper environment
     echo "🎨 Attempting to launch Qt Manager (with improved debugging)"
-    if "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_qt_manager.py"; then
+    echo "🔧 Environment check:"
+    echo "   PYTHONPATH: $PYTHONPATH"
+    echo "   PYTHONHOME: $PYTHONHOME"
+    echo "   APPDIR: $APPDIR"
+    
+    # Ensure proper working directory and launch Qt Manager
+    cd "${APPDIR}"
+    if env PYTHONPATH="${PYTHONPATH}" PYTHONHOME="${PYTHONHOME}" "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_qt_manager.py"; then
         echo "✅ Qt Manager launched successfully"
         exit 0
     else

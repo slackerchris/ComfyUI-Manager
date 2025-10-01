@@ -14,6 +14,25 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, List
 
+# Configure Qt platform for AppImage compatibility BEFORE importing Qt
+def setup_qt_platform():
+    """Configure Qt platform for optimal AppImage compatibility"""
+    print(f"🔧 Configuring Qt platform...")
+    print(f"   XDG_SESSION_TYPE: {os.environ.get('XDG_SESSION_TYPE', 'Not set')}")
+    print(f"   WAYLAND_DISPLAY: {os.environ.get('WAYLAND_DISPLAY', 'Not set')}")
+    
+    # Check if we're in Wayland environment
+    if os.environ.get('XDG_SESSION_TYPE') == 'wayland' or os.environ.get('WAYLAND_DISPLAY'):
+        os.environ['QT_QPA_PLATFORM'] = 'wayland'
+        print("   ✅ Configured Qt for Wayland platform")
+    else:
+        # For X11, set compatibility options to prevent crashes
+        os.environ['QT_X11_NO_MITSHM'] = '1'
+        print("   ✅ Configured Qt for X11 platform with compatibility options")
+
+# Set up Qt platform before any Qt imports
+setup_qt_platform()
+
 try:
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
