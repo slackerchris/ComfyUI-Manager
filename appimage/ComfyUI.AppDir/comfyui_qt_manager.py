@@ -565,19 +565,45 @@ class ComfyUIManager(QMainWindow):
                 QMessageBox.information(self, "Already Running", "ComfyUI is already running!")
                 return
                 
+            # Prevent multiple simultaneous start attempts
+            if hasattr(self, 'comfyui_process') and self.comfyui_process is not None:
+                if self.comfyui_process.poll() is None:  # Still running
+                    self.log_display.append("⚠️ ComfyUI is already starting/running")
+                    return
+                
             self.log_display.append("🚀 Preparing to start ComfyUI...")
             
-            # Build command - detect if we're in AppImage or development mode
-            appimage_python = os.path.join(self.appdir, "usr", "bin", "python3")
-            if os.path.exists(appimage_python):
-                # Running inside AppImage
-                python_exe = appimage_python
-            else:
-                # Development mode - use system Python
-                python_exe = sys.executable
-                self.log_display.append(f"🔧 Development mode: using system Python {python_exe}")
+            # Build command - use AppImage Python with real ComfyUI
+            # Try to find the extracted AppImage Python first
+            extracted_python_locations = [
+                "/home/chris/Documents/Git/Projects/ComfyUI/appimage/squashfs-root/usr/bin/python3",
+                os.path.join(self.appdir, "usr", "bin", "python3")
+            ]
             
-            main_py = os.path.join(self.appdir, "app", "main.py")
+            appimage_python = None
+            for py_location in extracted_python_locations:
+                if os.path.exists(py_location):
+                    appimage_python = py_location
+                    break
+            
+            if appimage_python:
+                # Use AppImage Python (embedded or extracted)
+                python_exe = appimage_python
+                self.log_display.append(f"🔧 Using AppImage Python: {python_exe}")
+                
+                # Use real ComfyUI installation, not AppImage's copy
+                main_py = "/home/chris/Documents/Git/Projects/ComfyUI/main.py"
+                if os.path.exists(main_py):
+                    self.log_display.append(f"🔧 Using real ComfyUI at: {main_py}")
+                else:
+                    # Fallback to AppImage's ComfyUI
+                    main_py = os.path.join(self.appdir, "app", "main.py")
+                    self.log_display.append(f"🔧 Using AppImage ComfyUI at: {main_py}")
+            else:
+                # Ultimate fallback - system Python
+                python_exe = sys.executable
+                main_py = "/home/chris/Documents/Git/Projects/ComfyUI/main.py"
+                self.log_display.append(f"⚠️ Fallback to system Python: {python_exe}")
             
             # Validate paths exist
             if not os.path.exists(python_exe):
@@ -600,12 +626,39 @@ class ComfyUIManager(QMainWindow):
                 
             self.log_display.append(f"📋 Command: {' '.join(cmd[:3])} [args...]")
                 
-            # Set environment carefully
+            # Set environment carefully - different for AppImage vs development
             env = os.environ.copy()
+            
+            if appimage_python and python_exe == appimage_python:
+                # Using AppImage Python - set up AppImage environment
+                if "/squashfs-root/" in python_exe:
+                    # Using extracted AppImage
+                    appimage_root = "/home/chris/Documents/Git/Projects/ComfyUI/appimage/squashfs-root"
+                    env.update({
+                        'PYTHONHOME': os.path.join(appimage_root, "usr"),
+                        'PYTHONPATH': os.path.join(appimage_root, "usr", "lib", "python3.12", "site-packages"),
+                        'LD_LIBRARY_PATH': os.path.join(appimage_root, "usr", "lib"),
+                    })
+                    self.log_display.append("🔧 Using extracted AppImage Python environment")
+                else:
+                    # Using AppImage from AppDir
+                    env.update({
+                        'PYTHONHOME': os.path.join(self.appdir, "usr"),
+                        'PYTHONPATH': os.path.join(self.appdir, "usr", "lib", "python3.12", "site-packages"),
+                        'LD_LIBRARY_PATH': os.path.join(self.appdir, "usr", "lib"),
+                    })
+                    self.log_display.append("🔧 Using AppImage Python environment")
+            else:
+                # Using system Python - clean environment
+                env.pop('PYTHONHOME', None)
+                env.pop('APPDIR', None)
+                self.log_display.append("🔧 Using system Python environment")
+            
+            # Use the directory where ComfyUI main.py is located
+            working_dir = os.path.dirname(main_py)
+            
+            # Common environment settings for both modes
             env.update({
-                'PYTHONHOME': os.path.join(self.appdir, "usr"),
-                'PYTHONPATH': os.path.join(self.appdir, "usr", "lib", "python3.12", "site-packages"),
-                'LD_LIBRARY_PATH': os.path.join(self.appdir, "usr", "lib"),
                 # Prevent Qt conflicts
                 'QT_PLUGIN_PATH': '',
                 'QML2_IMPORT_PATH': '',
@@ -620,7 +673,7 @@ class ComfyUIManager(QMainWindow):
                 # Try with process isolation first
                 self.comfyui_process = subprocess.Popen(
                     cmd, 
-                    cwd=os.path.join(self.appdir, "app"),
+                    cwd=working_dir,
                     env=env,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,  # Separate stderr to avoid blocking
@@ -633,7 +686,7 @@ class ComfyUIManager(QMainWindow):
                 # Fallback: start without preexec_fn
                 self.comfyui_process = subprocess.Popen(
                     cmd, 
-                    cwd=os.path.join(self.appdir, "app"),
+                    cwd=working_dir,
                     env=env,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -659,13 +712,16 @@ class ComfyUIManager(QMainWindow):
             if hasattr(self, 'comfyui_process') and self.comfyui_process:
                 return_code = self.comfyui_process.poll()
                 if return_code is not None:
-                    # Process has already terminated
+                    # Process has already terminated - don't auto-restart to avoid loops
                     stdout, stderr = self.comfyui_process.communicate()
-                    self.log_display.append(f"⚠️ ComfyUI process terminated with code: {return_code}")
+                    self.log_display.append(f"❌ ComfyUI failed to start (exit code: {return_code})")
                     if stdout:
-                        self.log_display.append(f"📄 Output: {stdout[:200]}...")
+                        self.log_display.append(f"📄 Output: {stdout[:500]}...")
                     if stderr:
-                        self.log_display.append(f"🚨 Error: {stderr[:200]}...")
+                        self.log_display.append(f"🚨 Error: {stderr[:500]}...")
+                    self.log_display.append("💡 Use the Start button to try again manually")
+                    # Reset the process reference
+                    self.comfyui_process = None
                 else:
                     self.log_display.append("✅ ComfyUI process running successfully")
                     
@@ -887,7 +943,7 @@ def main():
     # Set comprehensive application identification
     app.setApplicationName("ComfyUI Manager")
     app.setApplicationDisplayName("ComfyUI Manager")
-    app.setApplicationVersion("2.0.8")
+    app.setApplicationVersion("2.0.9")
     app.setOrganizationName("ComfyUI")
     # Note: Removed setOrganizationDomain to prevent "org.comfyui.python3" process name
     app.setQuitOnLastWindowClosed(False)
