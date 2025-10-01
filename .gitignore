@@ -41,10 +41,13 @@ site-packages/
 *.so
 *.so.*
 
-# AppImage logs and test files
+# AppImage archive and temporary files
+appimage/archive/
+appimage/squashfs-root/
+appimage/temp_mount/
+appimage/build-complete/
 appimage/*test*.log
-appimage/startup-test.log
-appimage/fixed-test-output.log
+appimage/*.log
 
 # App submodule (ComfyUI core - reference original repo)
 appimage/ComfyUI.AppDir/app/
