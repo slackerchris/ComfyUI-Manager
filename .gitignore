@@ -59,3 +59,4 @@ appimage/get-pip.py
 !appimage/ComfyUI.AppDir/*.png
 !appimage/build-scripts/
 !appimage/README.md
+README-original.md
