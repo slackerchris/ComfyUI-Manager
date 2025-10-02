@@ -87,21 +87,21 @@ class ProcessMonitor(QThread):
             for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent', 'memory_info']):
                 try:
                     cmdline = ' '.join(proc.info['cmdline'] or [])
-                    # Only detect actual ComfyUI main.py, not the manager itself
-                    if 'main.py' in cmdline and 'comfyui_qt_manager.py' not in cmdline:
-                        cpu_percent = proc.cpu_percent()
-                        memory_mb = proc.info['memory_info'].rss / 1024 / 1024
-                        
-                        processes.append({
-                            'pid': proc.info['pid'],
-                            'name': proc.info['name'],
-                            'cmdline': cmdline,
-                            'cpu': cpu_percent,
-                            'memory': memory_mb
-                        })
-                        
-                        total_memory += memory_mb
-                        total_cpu += cpu_percent
+                    if any(keyword in cmdline.lower() for keyword in ['comfyui', 'main.py']):
+                        if 'ComfyUI' in cmdline or 'main.py' in cmdline:
+                            cpu_percent = proc.cpu_percent()
+                            memory_mb = proc.info['memory_info'].rss / 1024 / 1024
+                            
+                            processes.append({
+                                'pid': proc.info['pid'],
+                                'name': proc.info['name'],
+                                'cmdline': cmdline,
+                                'cpu': cpu_percent,
+                                'memory': memory_mb
+                            })
+                            
+                            total_memory += memory_mb
+                            total_cpu += cpu_percent
                             
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -456,7 +456,7 @@ class ComfyUIManager(QMainWindow):
         self.tray_icon.setIcon(icon)
         
         # Set detailed tooltip for system identification  
-        self.tray_icon.setToolTip("ComfyUI Manager v2.4.2\nProfessional Desktop Interface for ComfyUI")
+        self.tray_icon.setToolTip("ComfyUI Manager v2.0.5\nProfessional Desktop Interface for ComfyUI")
         
         # Show tray icon
         self.tray_icon.show()
@@ -531,7 +531,7 @@ class ComfyUIManager(QMainWindow):
             
             # Update tray tooltip with running status
             if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.setToolTip(f"ComfyUI Manager v2.4.2 - Running ({count} processes)\nProfessional Desktop Interface for ComfyUI")
+                self.tray_icon.setToolTip(f"ComfyUI Manager v2.0.7 - Running ({count} processes)\nProfessional Desktop Interface for ComfyUI")
             
         else:
             self.status_label.setText("🔴 Not Running")
@@ -541,7 +541,7 @@ class ComfyUIManager(QMainWindow):
             
             # Update tray tooltip with stopped status
             if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.setToolTip("ComfyUI Manager v2.4.2 - Stopped\nProfessional Desktop Interface for ComfyUI")
+                self.tray_icon.setToolTip("ComfyUI Manager v2.0.7 - Stopped\nProfessional Desktop Interface for ComfyUI")
             
     def update_ui_state(self):
         """Update UI button states based on process status"""
@@ -582,13 +582,12 @@ class ComfyUIManager(QMainWindow):
                 self.log_display.append(f"✅ Using bundled Python: {python_exe}")
                 self.log_display.append(f"✅ Using bundled ComfyUI: {main_py}")
             else:
-                # Not running from AppImage - this shouldn't happen for end users
-                error_msg = "ERROR: AppImage environment not detected!\n\n"
-                error_msg += "This application must be run from the AppImage.\n"
-                error_msg += f"APPDIR: {self.appdir}\n"
-                error_msg += "Expected: Bundled Python and ComfyUI in AppImage"
-                self.log_display.append(f"❌ {error_msg}")
-                raise RuntimeError(error_msg)
+                # Development mode - use system Python
+                python_exe = sys.executable
+                main_py = "/home/chris/Documents/Git/Projects/ComfyUI/main.py"
+                
+                self.log_display.append(f"✅ Using system Python: {python_exe}")
+                self.log_display.append(f"✅ Using system ComfyUI: {main_py}")
             
             # Validate paths exist
             if not os.path.exists(python_exe):
@@ -618,30 +617,14 @@ class ComfyUIManager(QMainWindow):
                 # Running from AppImage - setup self-contained environment
                 self.log_display.append("🔧 Configuring self-contained AppImage environment...")
                 
-                # Dynamically detect Python version
-                python_lib_dir = os.path.join(self.appdir, "usr", "lib")
-                python_version = None
-                if os.path.exists(python_lib_dir):
-                    for item in os.listdir(python_lib_dir):
-                        if item.startswith("python3.") and os.path.isdir(os.path.join(python_lib_dir, item)):
-                            python_version = item
-                            break
-                
-                if not python_version:
-                    python_version = "python3.12"  # Fallback
-                
-                self.log_display.append(f"   Detected Python: {python_version}")
-                
                 # Set Python environment to use bundled libraries
                 env['PYTHONHOME'] = os.path.join(self.appdir, "usr")
-                
-                # Build PYTHONPATH with all necessary directories
-                site_packages = os.path.join(self.appdir, "usr", "lib", python_version, "site-packages")
-                stdlib = os.path.join(self.appdir, "usr", "lib", python_version)
-                app_dir = os.path.join(self.appdir, "app")
-                python_paths = [site_packages, stdlib, app_dir]
-                env['PYTHONPATH'] = ":".join(python_paths)
+                env['PYTHONPATH'] = os.path.join(self.appdir, "usr", "lib", "python3.12", "site-packages")
                 env['LD_LIBRARY_PATH'] = os.path.join(self.appdir, "usr", "lib")
+                
+                # Add ComfyUI app directory to Python path
+                if os.path.exists(os.path.join(self.appdir, "app")):
+                    env['PYTHONPATH'] = f"{env['PYTHONPATH']}:{os.path.join(self.appdir, 'app')}"
                 
                 self.log_display.append(f"   PYTHONHOME: {env['PYTHONHOME']}")
                 self.log_display.append(f"   PYTHONPATH: {env['PYTHONPATH'][:80]}...")
@@ -664,8 +647,9 @@ class ComfyUIManager(QMainWindow):
                     cmd, 
                     cwd=working_dir,
                     env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,  # Separate stderr to avoid blocking
+                    text=True,
                     start_new_session=True,  # Start in new process group
                     preexec_fn=os.setsid if hasattr(os, 'setsid') else None  # Unix process isolation
                 )
@@ -676,8 +660,9 @@ class ComfyUIManager(QMainWindow):
                     cmd, 
                     cwd=working_dir,
                     env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
                     start_new_session=True
                 )
             
@@ -715,10 +700,7 @@ class ComfyUIManager(QMainWindow):
         try:
             processes = self.find_comfyui_processes()
             if not processes:
-                self.log_display.append("⚠️ No ComfyUI processes found to stop")
-                # Don't show blocking dialog during restart
-                if not hasattr(self, '_restarting') or not self._restarting:
-                    QMessageBox.information(self, "Not Running", "ComfyUI is not running!")
+                QMessageBox.information(self, "Not Running", "ComfyUI is not running!")
                 return
                 
             # Graceful shutdown
@@ -731,9 +713,7 @@ class ComfyUIManager(QMainWindow):
                     self.log_display.append(f"⚠️ Process {proc_info['pid']} already terminated")
                 except Exception as e:
                     self.log_display.append(f"❌ Error terminating process {proc_info['pid']}: {e}")
-            
-            # Clean up process reference
-            self.comfyui_process = None
+                    
             self.status_bar.showMessage("Stopping ComfyUI...")
             self.log_display.append("🔄 ComfyUI stop requested")
             
@@ -747,22 +727,9 @@ class ComfyUIManager(QMainWindow):
         """Restart ComfyUI"""
         try:
             self.log_display.append("🔄 Restarting ComfyUI...")
-            
-            # Set flag to prevent blocking dialogs during restart
-            self._restarting = True
-            
-            # Stop current instance
             self.stop_comfyui()
-            
-            # Clear restart flag and start after delay
-            def start_after_stop():
-                self._restarting = False
-                self.start_comfyui()
-            
-            QTimer.singleShot(2000, start_after_stop)  # Wait 2 seconds then start
-            
+            QTimer.singleShot(2000, self.start_comfyui)  # Wait 2 seconds then start
         except Exception as e:
-            self._restarting = False  # Clear flag on error
             error_msg = f"Failed to restart ComfyUI: {str(e)}"
             self.log_display.append(f"❌ {error_msg}")
             QMessageBox.critical(self, "Restart Error", error_msg)
@@ -802,9 +769,9 @@ class ComfyUIManager(QMainWindow):
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
                     cmdline = ' '.join(proc.info['cmdline'] or [])
-                    # Only detect actual ComfyUI main.py, not the manager itself
-                    if 'main.py' in cmdline and 'comfyui_qt_manager.py' not in cmdline:
-                        processes.append(proc.info)
+                    if any(keyword in cmdline.lower() for keyword in ['comfyui', 'main.py']):
+                        if 'ComfyUI' in cmdline or 'main.py' in cmdline:
+                            processes.append(proc.info)
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
         except Exception as e:
@@ -940,14 +907,11 @@ def main():
     
     app = QApplication(sys.argv)
     
-    # Set comprehensive application identification (must be done before creating windows)
+    # Set comprehensive application identification
     app.setApplicationName("ComfyUI Manager")
     app.setApplicationDisplayName("ComfyUI Manager")
-    # Version 2.4.2: Fixed CUDA auto-detection for systems without NVIDIA drivers
-    app.setApplicationVersion("2.4.2")
+    app.setApplicationVersion("2.1.0")
     app.setOrganizationName("ComfyUI")
-    # Set desktop file name to fix X11/Wayland WM_CLASS (prevents "python3" in taskbar)
-    app.setDesktopFileName("ComfyUI.desktop")
     # Note: Removed setOrganizationDomain to prevent "org.comfyui.python3" process name
     app.setQuitOnLastWindowClosed(False)
     

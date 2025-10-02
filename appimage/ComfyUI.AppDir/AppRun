@@ -36,6 +36,18 @@ if [ -d "${APPDIR}/usr/lib/${PYTHON_VERSION}" ]; then
     export PYTHONPATH="${PYTHONPATH}:${APPDIR}/usr/lib/${PYTHON_VERSION}"
 fi
 
+# Set Qt plugin path to use bundled PySide6 plugins (self-contained)
+export QT_PLUGIN_PATH="${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages/PySide6/Qt/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages/PySide6/Qt/plugins/platforms"
+
+# Set Qt library path to use bundled libraries (self-contained)
+export QT_LIBS="${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages/PySide6/Qt/lib"
+export LD_LIBRARY_PATH="${QT_LIBS}:${APPDIR}/usr/lib:${APPDIR}/lib:${LD_LIBRARY_PATH}"
+
+# Additional Qt environment variables for self-contained operation
+export QML2_IMPORT_PATH="${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages/PySide6/Qt/qml"
+export QT_WAYLAND_SHELL_INTEGRATION_PATH="${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages/PySide6/Qt/plugins/wayland-shell-integration"
+
 # Try to find SSL certificates
 for cert_path in \
     "${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages/certifi/cacert.pem" \
@@ -207,7 +219,7 @@ if [ "$SHOW_WIZARD" = true ]; then
     exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_wizard.py"
 elif [ "$SHOW_MANAGER" = true ] && [ "$DIRECT_MODE" = false ]; then
     # Try Qt manager with improved error handling and proper environment
-    echo "🎨 Launching ComfyUI Manager v2.0.7"
+    echo "🎨 Launching ComfyUI Qt Manager"
     echo "🔧 Environment check:"
     echo "   PYTHONPATH: $PYTHONPATH"
     echo "   PYTHONHOME: $PYTHONHOME"
@@ -218,11 +230,18 @@ elif [ "$SHOW_MANAGER" = true ] && [ "$DIRECT_MODE" = false ]; then
     
     # Ensure proper working directory and launch Qt Manager with branded process name
     cd "${APPDIR}"
-    if env PYTHONPATH="${PYTHONPATH}" PYTHONHOME="${PYTHONHOME}" "$WRAPPER_SCRIPT" "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_qt_manager.py"; then
-        echo "✅ ComfyUI Manager launched successfully"
+    env PYTHONPATH="${PYTHONPATH}" PYTHONHOME="${PYTHONHOME}" "$WRAPPER_SCRIPT" "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_qt_manager.py"
+    EXIT_CODE=$?
+    
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo "✅ ComfyUI Manager exited successfully"
         exit 0
     else
-        echo "❌ ComfyUI Manager failed, falling back to direct launch"
+        echo "❌ ComfyUI Manager failed with exit code: $EXIT_CODE"
+        if [ $EXIT_CODE -gt 128 ]; then
+            SIGNAL=$((EXIT_CODE - 128))
+            echo "   Killed by signal: $SIGNAL"
+        fi
         echo "🌐 Starting ComfyUI directly (Qt manager fallback)"
         DIRECT_MODE=true
     fi

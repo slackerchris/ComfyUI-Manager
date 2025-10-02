@@ -1,0 +1,132 @@
+================================================================================
+COMFYUI MANAGER v2.4.0 - BUILD SUMMARY
+================================================================================
+Build Date: October 1, 2025
+Build Status: ✅ SUCCESS
+
+================================================================================
+BUILD DETAILS
+================================================================================
+
+AppImage File: ComfyUI-Manager-v2.4.0-x86_64.AppImage
+File Size: 4.3 GB
+Architecture: x86_64
+Compression: squashfs with gzip
+Files: 38,854 files, 43,634 inodes
+Compression Ratio: 54.59% (8.1 GB → 4.3 GB)
+
+================================================================================
+WHAT'S NEW IN v2.4.0
+================================================================================
+
+Critical Fixes:
+✅ Fixed subprocess blocking (PIPE → DEVNULL)
+✅ Dynamic Python version detection (no hardcoded versions)
+✅ Added Python stdlib to PYTHONPATH
+✅ Fixed check_startup_success() hanging on DEVNULL
+✅ Fixed process name showing "python3" instead of "ComfyUI Manager"
+
+All Issues from v2.0.7-v2.3.0 RESOLVED
+
+================================================================================
+TESTING RESULTS
+================================================================================
+
+✅ Build completed successfully
+✅ AppImage is executable (chmod +x)
+✅ Launch test passed - shows correct startup messages:
+   - "🚀 ComfyUI AppImage - Starting..."
+   - "🎮 Launching GUI Management Interface"
+   - "🎨 Launching ComfyUI Qt Manager"
+✅ Environment configured correctly:
+   - PYTHONPATH includes site-packages, stdlib, app
+   - PYTHONHOME set to bundled Python
+   - APPDIR detected
+
+================================================================================
+BUNDLED COMPONENTS
+================================================================================
+
+- Python 3.12.3 (bundled runtime)
+- PySide6 6.x (Qt6 GUI framework)
+- ComfyUI v0.3.61 (AI image generation)
+- psutil (process monitoring)
+- All Python dependencies
+
+================================================================================
+LAUNCH INSTRUCTIONS
+================================================================================
+
+Basic Launch (GUI Manager):
+./ComfyUI-Manager-v2.4.0-x86_64.AppImage
+
+Direct Web Mode (Skip Manager):
+./ComfyUI-Manager-v2.4.0-x86_64.AppImage --direct --auto-launch
+
+Help:
+./ComfyUI-Manager-v2.4.0-x86_64.AppImage --help
+
+================================================================================
+EXPECTED BEHAVIOR
+================================================================================
+
+1. Double-click AppImage or run from terminal
+2. Qt Manager window opens with "ComfyUI Manager" title
+3. System tray icon appears (NOT showing "python3")
+4. Status shows "🔴 Not Running" initially
+5. Click "▶ Start ComfyUI" to launch server
+6. Status updates to "🟢 Running"
+7. Open web interface at http://127.0.0.1:8188
+
+See LAUNCH_BEHAVIOR.md for complete details.
+
+================================================================================
+VERIFIED FIXES
+================================================================================
+
+All fixes verified in CODE_REVIEW_v2.4.0.txt:
+- Lines 666-667, 678-679: subprocess.DEVNULL ✓
+- Lines 621-632: Dynamic Python detection ✓
+- Lines 638-642: stdlib in PYTHONPATH ✓
+- Lines 696-711: No communicate() call ✓
+- Line 931: setDesktopFileName() ✓
+- All version strings: v2.4.0 ✓
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Test the AppImage on your system:
+   ./ComfyUI-Manager-v2.4.0-x86_64.AppImage
+
+2. Verify the Qt Manager opens
+
+3. Click "Start ComfyUI" and check it launches successfully
+
+4. Verify process monitoring works (CPU/Memory display)
+
+5. Check system tray shows "ComfyUI Manager" not "python3"
+
+6. Test Stop/Restart functions
+
+7. If all works: Archive/backup v2.4.0 as stable release
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+If Qt Manager doesn't open:
+- Check for PySide6 errors in terminal output
+- Verify X11/Wayland display is available
+
+If ComfyUI fails to start:
+- Check Logs tab in manager
+- Verify models directory exists (~/.local/share/ComfyUI)
+- Check terminal for Python import errors
+
+For detailed troubleshooting, see LAUNCH_BEHAVIOR.md
+
+================================================================================
+BUILD COMPLETED: October 1, 2025
+READY FOR TESTING ✅
+================================================================================

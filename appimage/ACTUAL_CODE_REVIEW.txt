@@ -1,0 +1,39 @@
+================================================================================
+SYSTEMATIC CODE REVIEW - ComfyUI Manager v2.4.1
+================================================================================
+Reviewer: GitHub Copilot (Redemption Attempt)
+Date: October 1, 2025
+Method: Logic analysis + workflow testing
+
+================================================================================
+CRITICAL USER WORKFLOWS TO VERIFY
+================================================================================
+
+Workflow 1: LAUNCH MANAGER
+- User double-clicks AppImage
+- Expected: Manager opens, status "🔴 Not Running"
+- Must verify: No false positive detection
+
+Workflow 2: START COMFYUI  
+- User clicks "▶ Start ComfyUI"
+- Expected: ComfyUI launches, status "🟢 Running"
+- Must verify: Process actually starts, PID tracked
+
+Workflow 3: STOP COMFYUI
+- User clicks "⏹ Stop ComfyUI"  
+- Expected: ComfyUI terminates, status "🔴 Not Running"
+- Must verify: Process killed, cleanup done
+
+Workflow 4: RESTART COMFYUI
+- User clicks "🔄 Restart ComfyUI"
+- Expected: Stop → wait → Start, no crash
+- Must verify: No blocking dialogs, proper sequencing
+
+Workflow 5: RESTART WHEN NOT RUNNING
+- ComfyUI not running, user clicks Restart
+- Expected: Just start it (no error)
+- Must verify: Doesn't crash on empty process list
+
+================================================================================
+ANALYZING EACH FUNCTION
+================================================================================

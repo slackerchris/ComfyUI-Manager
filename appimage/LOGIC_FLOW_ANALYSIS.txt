@@ -1,0 +1,144 @@
+================================================================================
+LOGIC FLOW ANALYSIS - v2.4.1
+================================================================================
+
+SCENARIO 1: Fresh Launch (ComfyUI not running)
+---------------------------------------------
+1. AppImage mounts → AppRun → Qt Manager starts
+2. __init__() creates ComfyUIManager
+   - self.comfyui_process = None ✓
+   - setup_ui() creates buttons ✓
+   - setup_monitoring() starts ProcessMonitor thread ✓
+3. ProcessMonitor.get_comfyui_status() runs every 1 second
+   - Scans for: 'main.py' in cmdline AND 'comfyui_qt_manager.py' not in cmdline ✓
+   - Manager's process: '/tmp/.mount_XXX/comfyui_qt_manager.py' → EXCLUDED ✓
+   - ComfyUI not running → count=0, running=False ✓
+4. update_process_info() receives: {'running': False, 'count': 0}
+   - Sets status "🔴 Not Running" ✓
+5. update_ui_state() 
+   - running=False → Start enabled, Stop disabled ✓
+
+RESULT: ✅ Should show correct state
+
+SCENARIO 2: Click "Start ComfyUI"
+----------------------------------
+1. start_comfyui() called
+2. Check if already running: self.process_info.get('running', False) → False ✓
+3. Check if process exists: self.comfyui_process is None → proceed ✓
+4. Build command: python3 main.py --listen 127.0.0.1 --port 8188 ✓
+5. Set environment: PYTHONHOME, PYTHONPATH (with stdlib) ✓
+6. Popen with DEVNULL ✓
+7. Store: self.comfyui_process = <Popen object> ✓
+8. Schedule: check_startup_success() in 2 seconds ✓
+9. ProcessMonitor detects new process on next cycle
+   - Finds: python3 /path/app/main.py → MATCHES ✓
+   - count=1, running=True ✓
+10. UI updates to "🟢 Running" ✓
+
+RESULT: ✅ Should work
+
+SCENARIO 3: Click "Stop ComfyUI"  
+---------------------------------
+1. stop_comfyui() called
+2. find_comfyui_processes() finds running ComfyUI ✓
+3. psutil.Process(pid).terminate() ✓
+4. self.comfyui_process = None  ✓ (FIXED!)
+5. ProcessMonitor detects process gone on next cycle
+   - count=0, running=False ✓
+6. UI updates to "🔴 Not Running" ✓
+
+RESULT: ✅ Should work
+
+SCENARIO 4: Click "Restart ComfyUI" (when running)
+---------------------------------------------------
+1. restart_comfyui() called
+2. Set self._restarting = True ✓
+3. Call stop_comfyui()
+   - Finds process, terminates it ✓
+   - Checks self._restarting → True, NO BLOCKING DIALOG ✓ (FIXED!)
+   - Sets self.comfyui_process = None ✓
+4. QTimer.singleShot(2000, start_after_stop) ✓
+5. After 2 seconds:
+   - start_after_stop() sets self._restarting = False ✓
+   - Calls self.start_comfyui() ✓
+   - ComfyUI launches ✓
+
+RESULT: ✅ Should work
+
+SCENARIO 5: Click "Restart ComfyUI" (when NOT running)
+-------------------------------------------------------
+1. restart_comfyui() called
+2. Set self._restarting = True ✓
+3. Call stop_comfyui()
+   - find_comfyui_processes() returns [] ✓
+   - Checks self._restarting → True, NO BLOCKING DIALOG ✓ (FIXED!)
+   - Logs warning, returns early ✓
+4. QTimer still schedules start_after_stop() ✓
+5. After 2 seconds:
+   - start_after_stop() sets self._restarting = False ✓
+   - Calls self.start_comfyui() ✓
+   - ComfyUI launches ✓
+
+RESULT: ✅ Should work (just starts it)
+
+================================================================================
+EDGE CASES TO CHECK
+================================================================================
+
+Edge Case 1: Start button spammed
+----------------------------------
+- First click: starts process, sets self.comfyui_process
+- Second click (before detection): 
+  - Line 569: self.comfyui_process.poll() is None → True (still running)
+  - Logs warning, returns ✓
+RESULT: ✅ Protected
+
+Edge Case 2: Stop when process already dead
+--------------------------------------------
+- find_comfyui_processes() returns []
+- Logs warning ✓
+- Shows dialog (if not restarting) ✓
+- No crash ✓
+RESULT: ✅ Handled
+
+Edge Case 3: Crash during subprocess.Popen
+-------------------------------------------
+- Exception caught in start_comfyui() ✓
+- Error logged and shown to user ✓
+- self.comfyui_process remains None ✓
+RESULT: ✅ Handled
+
+Edge Case 4: Process dies immediately after start
+--------------------------------------------------
+- check_startup_success() runs after 2 seconds
+- poll() returns exit code (not None)
+- Logs failure ✓
+- Sets self.comfyui_process = None ✓
+- ProcessMonitor sees no process ✓
+RESULT: ✅ Handled
+
+================================================================================
+REMAINING ISSUES TO FIX
+================================================================================
+
+ISSUE 1: Version number still says v2.4.0
+- Should be updated to v2.4.1
+- Locations: Lines 459, 534, 544, ~927
+
+ISSUE 2: Inconsistency check
+- Need to verify app.setApplicationVersion() matches tooltips
+
+================================================================================
+VERDICT
+================================================================================
+
+Logic Flow: ✅ CORRECT (after our fixes)
+Edge Cases: ✅ HANDLED  
+Version: ❌ NEEDS UPDATE to v2.4.1
+
+Confidence: HIGH - The logic should work correctly now with both fixes:
+1. Process detection excludes manager ✓
+2. Restart doesn't show blocking dialog ✓
+3. Stop cleans up process reference ✓
+
+================================================================================

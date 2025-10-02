@@ -8,6 +8,6 @@ Categories=Graphics;Photography;
 Terminal=false
 NoDisplay=false
 StartupNotify=true
-StartupWMClass=ComfyUI
+StartupWMClass=ComfyUI Manager
 Keywords=AI;Image;Generation;Stable;Diffusion;
 MimeType=image/png;image/jpeg;image/webp;
