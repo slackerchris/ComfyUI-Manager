@@ -1,7 +1,32 @@
 #!/usr/bin/env bash
 
 # Enhanced AppImage AppRun script for ComfyUI
-# Features: GPU detection, configuration wizard, AI video support
+# Features: USER_CONFIG_DIR="${HOME}/.config/ComfyUI"
+USER_MODELS_DIR="${HOME}/.local/share/ComfyUI"
+
+# Create critical directories with validation (Bug #2 fix)
+if ! mkdir -p "$USER_CONFIG_DIR" "$USER_MODELS_DIR" 2>/dev/null; then
+    echo "❌ ERROR: Failed to create directories in $HOME" >&2
+    echo "   Config: $USER_CONFIG_DIR" >&2
+    echo "   Models: $USER_MODELS_DIR" >&2
+    echo "   Check permissions and disk space" >&2
+    exit 1
+fi
+
+# Verify directories actually exist and are writable
+if [ ! -w "$USER_CONFIG_DIR" ] || [ ! -w "$USER_MODELS_DIR" ]; then
+    echo "❌ ERROR: Directories not writable" >&2
+    echo "   Config dir: $USER_CONFIG_DIR" >&2
+    echo "   Models dir: $USER_MODELS_DIR" >&2
+    echo "   Check permissions on $HOME" >&2
+    exit 1
+fi
+
+# Create ALL model subdirectories that ComfyUI supports
+# Using single source of truth from model_folders.py
+while IFS= read -r folder; do
+    mkdir -p "$USER_MODELS_DIR/$folder"
+done < <("${APPDIR}/usr/bin/python3" "${APPDIR}/model_folders.py" --list)ction, configuration wizard, AI video support
 
 # Get the directory where the AppImage is located
 HERE="$(dirname "$(readlink -f "${0}")")"
@@ -27,9 +52,14 @@ if [ -z "$PYTHON_VERSION" ]; then
     fi
 fi
 
-# Set Python environment with proper paths
+# Detect GPU and select appropriate PyTorch backend
+echo "🔍 Selecting PyTorch backend..."
+PYTORCH_BACKEND_DIR=$("${APPDIR}/pytorch_backend_selector.sh" "${APPDIR}")
+echo "   Backend directory: ${PYTORCH_BACKEND_DIR}"
+
+# Set Python environment with proper paths including selected PyTorch backend
 export PYTHONHOME="${APPDIR}/usr"
-export PYTHONPATH="${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages:${APPDIR}/app"
+export PYTHONPATH="${PYTORCH_BACKEND_DIR}:${APPDIR}/usr/lib/${PYTHON_VERSION}/site-packages:${APPDIR}/app"
 
 # Ensure Python can find its standard library
 if [ -d "${APPDIR}/usr/lib/${PYTHON_VERSION}" ]; then
@@ -64,13 +94,22 @@ done
 export HF_HUB_DISABLE_TELEMETRY=1
 export DO_NOT_TRACK=1
 
+# Set ROCm environment variables for AMD GPU support
+# These help ROCm detect and use AMD GPUs properly
+export HSA_OVERRIDE_GFX_VERSION=10.3.0  # For RDNA2 GPUs (RX 6000 series)
+export GPU_MAX_HEAP_SIZE=100
+export GPU_MAX_ALLOC_PERCENT=100
+export HSA_ENABLE_SDMA=0  # Disable SDMA for better stability
+
 # Create user directories if they don't exist
 USER_CONFIG_DIR="${HOME}/.config/ComfyUI"
 USER_MODELS_DIR="${HOME}/.local/share/ComfyUI"
 mkdir -p "$USER_CONFIG_DIR" "$USER_MODELS_DIR"
 
-# Create model subdirectories for AI video generation
-mkdir -p "$USER_MODELS_DIR"/{checkpoints,vae,loras,embeddings,controlnet,animatediff,video_models}
+# Create ALL model subdirectories that ComfyUI supports
+# Using single source of truth from model_folders.py
+MODEL_FOLDERS=$("${APPDIR}/usr/bin/python3" "${APPDIR}/model_folders.py" --bash)
+mkdir -p "$USER_MODELS_DIR"/{$MODEL_FOLDERS}
 
 # Create writable directories for ComfyUI components that need write access
 COMFYUI_TEMP_DIR="${USER_CONFIG_DIR}/temp"
@@ -86,6 +125,68 @@ mkdir -p "$COMFYUI_INPUT_DIR"/{3d,clips,images}
 export COMFYUI_TEMP_DIR
 export COMFYUI_INPUT_DIR  
 export COMFYUI_OUTPUT_DIR
+
+# Create or update extra_model_paths.yaml with version tracking
+MODEL_CONFIG="$USER_CONFIG_DIR/extra_model_paths.yaml"
+CURRENT_CONFIG_VERSION="2.5.8"
+
+# Check if config needs update (doesn't exist or is old version)
+NEEDS_UPDATE=false
+CONFIG_VERSION=""
+
+if [ ! -f "$MODEL_CONFIG" ]; then
+    echo "📁 Creating model paths configuration v$CURRENT_CONFIG_VERSION..."
+    NEEDS_UPDATE=true
+else
+    # Extract version from existing config
+    CONFIG_VERSION=$(grep "^# config_version:" "$MODEL_CONFIG" 2>/dev/null | cut -d: -f2 | tr -d ' ')
+    
+    if [ -z "$CONFIG_VERSION" ]; then
+        echo "📁 Migrating legacy config to v$CURRENT_CONFIG_VERSION..."
+        CONFIG_VERSION="<2.5.8"
+        NEEDS_UPDATE=true
+    elif [ "$CONFIG_VERSION" != "$CURRENT_CONFIG_VERSION" ]; then
+        echo "📁 Upgrading config from v$CONFIG_VERSION to v$CURRENT_CONFIG_VERSION..."
+        NEEDS_UPDATE=true
+    fi
+    
+    if [ "$NEEDS_UPDATE" = true ]; then
+        # Backup old config with version info (Bug #3 fix: error handling)
+        BACKUP_FILE="$MODEL_CONFIG.backup-v${CONFIG_VERSION}-$(date +%Y%m%d-%H%M%S)"
+        if ! cp "$MODEL_CONFIG" "$BACKUP_FILE" 2>/dev/null; then
+            echo "   ❌ ERROR: Failed to backup config file" >&2
+            echo "      File: $MODEL_CONFIG" >&2
+            echo "      Aborting update to prevent data loss" >&2
+            echo "      Check disk space and permissions in $USER_CONFIG_DIR" >&2
+            exit 1
+        fi
+        echo "   ✅ Backup saved: $(basename $BACKUP_FILE)"
+    fi
+fi
+
+if [ "$NEEDS_UPDATE" = true ]; then
+    # Generate YAML using single source of truth from model_folders.py
+    YAML_FOLDERS=$("${APPDIR}/usr/bin/python3" "${APPDIR}/model_folders.py" --yaml)
+    
+    cat > "$MODEL_CONFIG" << EOF
+# ComfyUI Model Paths Configuration
+# config_version: $CURRENT_CONFIG_VERSION
+# This file tells ComfyUI where to find your models
+# DO NOT REMOVE THE config_version LINE - it's used for automatic updates
+# Models are stored in: ~/.local/share/ComfyUI/
+# Auto-generated from model_folders.py (single source of truth)
+
+user_models:
+    base_path: $USER_MODELS_DIR
+    
+$YAML_FOLDERS
+EOF
+    echo "✅ Model paths configuration ready: v$CURRENT_CONFIG_VERSION"
+    echo "   Config: $MODEL_CONFIG"
+    echo "   Models: $USER_MODELS_DIR"
+else
+    echo "✅ Model paths configuration up to date (v$CONFIG_VERSION)"
+fi
 
 # Function to detect GPU
 detect_gpu() {
@@ -155,6 +256,7 @@ SHOW_MANAGER=true  # Default to GUI manager on double-click
 DIRECT_MODE=false
 EXTRA_ARGS=""
 GPU_OVERRIDE=""
+NETWORK_LISTEN="127.0.0.1"  # Default to localhost only
 
 # If no arguments, launch GUI manager (perfect for double-click management)
 if [ $# -eq 0 ]; then
@@ -202,11 +304,69 @@ for arg in "$@"; do
         --cuda|--force-cuda)
             GPU_OVERRIDE="cuda:"
             ;;
-        --help|-h)
-            exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_launcher.py" --help-all
+        --check-device)
+            # Run device check and exit
+            exec "${APPDIR}/usr/bin/python3" "${APPDIR}/check_device.py"
             ;;
-        --help-all)
-            exec "${APPDIR}/usr/bin/python3" "${APPDIR}/comfyui_launcher.py" --help-all
+        --amd-setup)
+            # Run AMD GPU setup script and exit
+            exec bash "${APPDIR}/amd_gpu_setup.sh"
+            ;;
+        --listen-network|--network|--lan)
+            # Allow network access from other devices on local network
+            NETWORK_LISTEN="0.0.0.0"
+            echo "🌐 Network access enabled: ComfyUI will be accessible from local network"
+            ;;
+        --help|-h|--help-all)
+            cat << 'EOF'
+    echo "ComfyUI Manager v2.5.8 Universal - AI Image and Video Generation"
+================================================================
+
+Usage: ComfyUI.AppImage [options]
+
+Default Behavior:
+  Double-click           Launch GUI management interface (recommended)
+
+Interface Options:
+  --gui, --manager       Launch GUI management interface (default)
+  --direct, --web        Launch ComfyUI web interface directly
+  --wizard               Show configuration wizard
+
+GPU Options:
+  --check-device         Check GPU/CPU detection status
+  --amd-setup            Run AMD GPU setup wizard (fixes render group)
+  --cpu, --force-cpu     Force CPU mode
+  --cuda, --force-cuda   Force CUDA GPU mode
+
+Network Options:
+  --listen-network       Enable network access (listen on 0.0.0.0)
+  --network, --lan       Same as --listen-network
+  --port PORT            Listen on specific port (default: 8188)
+
+Other Options:
+  --auto-launch          Automatically open browser
+  --help, -h             Show this help message
+  --video-setup          Run video generation setup
+
+Default Access:
+  🔒 http://127.0.0.1:8188 (localhost only - secure)
+
+Network Access Example:
+  🌐 ./app.AppImage --listen-network --web
+  📱 Access from: http://your-ip:8188
+
+Security Note:
+  --listen-network allows access from any device on your local network.
+  Only use on trusted networks (home/office WiFi).
+  NOT recommended for public WiFi or untrusted networks.
+
+Documentation:
+  See NETWORK_ACCESS.md for detailed network setup guide
+  See PRODUCTION_READY_v2.5.0.md for v2.5.0 features
+  See VERSION_CONTROL.md for version management
+
+EOF
+            exit 0
             ;;
         *)
             EXTRA_ARGS="${EXTRA_ARGS} ${arg}"
@@ -288,7 +448,7 @@ else
 fi
 
 # Build final arguments
-FINAL_ARGS="--listen 127.0.0.1 --port 8188 --user-directory $USER_CONFIG_DIR"
+FINAL_ARGS="--listen ${NETWORK_LISTEN} --port 8188 --user-directory $USER_CONFIG_DIR"
 
 # Set database to writable location
 DATABASE_PATH="${COMFYUI_DB_DIR}/comfyui.db"
@@ -319,7 +479,17 @@ fi
 echo "Starting ComfyUI with configuration:"
 echo "  GPU Mode: $GPU_TYPE"
 echo "  Arguments: $FINAL_ARGS"
-echo "  Web Interface: http://127.0.0.1:8188"
+if [ "$NETWORK_LISTEN" = "0.0.0.0" ]; then
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+    echo "  🌐 Network Access: ENABLED"
+    echo "  📱 Local:   http://127.0.0.1:8188"
+    echo "  📱 Network: http://${LOCAL_IP}:8188"
+    echo "  ⚠️  Security: Accessible from any device on your local network"
+else
+    echo "  🔒 Network Access: DISABLED (localhost only)"
+    echo "  📱 Web Interface: http://127.0.0.1:8188"
+    echo "  💡 Tip: Use --listen-network to enable network access"
+fi
 echo ""
 echo "AI Video Generation Features Available:"
 echo "  - Text-to-Video with AnimateDiff"

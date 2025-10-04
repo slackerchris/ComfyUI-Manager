@@ -188,9 +188,10 @@ class ModelManager(QWidget):
         if not self.models_dir.exists():
             self.models_dir.mkdir(parents=True, exist_ok=True)
             
-        # Create model subdirectories
-        model_dirs = ['checkpoints', 'vae', 'loras', 'embeddings', 'controlnet', 'animatediff', 'video_models']
-        for model_dir in model_dirs:
+        # Import model folders from single source of truth
+        from model_folders import MODEL_FOLDERS
+        
+        for model_dir in MODEL_FOLDERS:
             dir_path = self.models_dir / model_dir
             dir_path.mkdir(exist_ok=True)
             
@@ -231,7 +232,7 @@ class ComfyUIManager(QMainWindow):
         
     def setup_ui(self):
         """Setup the main user interface"""
-        self.setWindowTitle("ComfyUI Manager")
+        self.setWindowTitle("ComfyUI Manager v2.5.8 Universal")
         self.setMinimumSize(800, 600)
         
         # Apply clean, system-consistent styling
@@ -279,6 +280,34 @@ class ComfyUIManager(QMainWindow):
         """Setup the main control interface"""
         control_widget = QWidget()
         layout = QVBoxLayout(control_widget)
+        
+        # GPU/CPU Status section (NEW)
+        self.device_status_group = QGroupBox("🎮 Device Status")
+        device_layout = QVBoxLayout(self.device_status_group)
+        
+        self.device_status_label = QLabel("⏳ Checking device...")
+        self.device_status_label.setFont(QFont("", 12, QFont.Bold))
+        self.device_status_label.setAlignment(Qt.AlignCenter)
+        self.device_status_label.setStyleSheet("padding: 10px;")
+        
+        self.device_details_label = QLabel("")
+        self.device_details_label.setAlignment(Qt.AlignCenter)
+        self.device_details_label.setWordWrap(True)
+        
+        # Refresh button
+        refresh_device_btn = QPushButton("🔄 Refresh")
+        refresh_device_btn.clicked.connect(self.check_device_status)
+        refresh_device_btn.setMaximumWidth(100)
+        
+        device_layout.addWidget(self.device_status_label)
+        device_layout.addWidget(self.device_details_label)
+        device_layout.addWidget(refresh_device_btn, alignment=Qt.AlignCenter)
+        
+        layout.addWidget(self.device_status_group)
+        
+        # Check device status on startup (in background)
+        self.device_check_running = False
+        QTimer.singleShot(500, self.check_device_status)
         
         # Status section
         status_group = QGroupBox("ComfyUI Status")
@@ -396,17 +425,47 @@ class ComfyUIManager(QMainWindow):
         
         # Connection settings
         connection_group = QGroupBox("Connection Settings")
-        connection_layout = QGridLayout(connection_group)
+        connection_layout = QVBoxLayout(connection_group)
         
-        connection_layout.addWidget(QLabel("Host:"), 0, 0)
+        # Network access checkbox
+        self.network_access_check = QCheckBox("🌐 Enable Network Access (listen on 0.0.0.0)")
+        self.network_access_check.setToolTip(
+            "Allow access from other devices on your local network\n"
+            "⚠️  Security Warning: Anyone on your network can access ComfyUI\n"
+            "Only enable on trusted networks (home/office WiFi)"
+        )
+        self.network_access_check.stateChanged.connect(self.on_network_access_changed)
+        connection_layout.addWidget(self.network_access_check)
+        
+        # Host/Port in a grid
+        host_port_layout = QGridLayout()
+        
+        host_port_layout.addWidget(QLabel("Host:"), 0, 0)
         self.host_input = QLineEdit("127.0.0.1")
-        connection_layout.addWidget(self.host_input, 0, 1)
+        self.host_input.setReadOnly(True)  # Controlled by checkbox
+        self.host_input.setToolTip("Automatically set based on network access setting")
+        host_port_layout.addWidget(self.host_input, 0, 1)
         
-        connection_layout.addWidget(QLabel("Port:"), 1, 0)
+        host_port_layout.addWidget(QLabel("Port:"), 1, 0)
         self.port_input = QSpinBox()
         self.port_input.setRange(1024, 65535)
         self.port_input.setValue(8188)
-        connection_layout.addWidget(self.port_input, 1, 1)
+        host_port_layout.addWidget(self.port_input, 1, 1)
+        
+        connection_layout.addLayout(host_port_layout)
+        
+        # Network status info
+        self.network_info_label = QLabel("🔒 Localhost only (secure)")
+        self.network_info_label.setStyleSheet(
+            "padding: 10px; "
+            "background-color: #2e7d32; "
+            "color: white; "
+            "border-radius: 4px; "
+            "font-weight: bold; "
+            "font-size: 11pt;"
+        )
+        self.network_info_label.setWordWrap(True)
+        connection_layout.addWidget(self.network_info_label)
         
         layout.addWidget(connection_group)
         
@@ -456,7 +515,7 @@ class ComfyUIManager(QMainWindow):
         self.tray_icon.setIcon(icon)
         
         # Set detailed tooltip for system identification  
-        self.tray_icon.setToolTip("ComfyUI Manager v2.4.2\nProfessional Desktop Interface for ComfyUI")
+        self.tray_icon.setToolTip("ComfyUI Manager v2.5.8 Universal\nProfessional Desktop Interface for ComfyUI")
         
         # Show tray icon
         self.tray_icon.show()
@@ -531,7 +590,7 @@ class ComfyUIManager(QMainWindow):
             
             # Update tray tooltip with running status
             if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.setToolTip(f"ComfyUI Manager v2.4.2 - Running ({count} processes)\nProfessional Desktop Interface for ComfyUI")
+                self.tray_icon.setToolTip(f"ComfyUI Manager v2.5.8 Universal - Running ({count} processes)\nProfessional Desktop Interface for ComfyUI")
             
         else:
             self.status_label.setText("🔴 Not Running")
@@ -541,7 +600,7 @@ class ComfyUIManager(QMainWindow):
             
             # Update tray tooltip with stopped status
             if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.setToolTip("ComfyUI Manager v2.4.2 - Stopped\nProfessional Desktop Interface for ComfyUI")
+                self.tray_icon.setToolTip("ComfyUI Manager v2.5.8 Universal - Stopped\nProfessional Desktop Interface for ComfyUI")
             
     def update_ui_state(self):
         """Update UI button states based on process status"""
@@ -557,6 +616,123 @@ class ComfyUIManager(QMainWindow):
             self.status_bar.showMessage("ComfyUI is running")
         else:
             self.status_bar.showMessage("ComfyUI is stopped")
+    
+    def check_device_status(self):
+        """Check if GPU or CPU mode is active (runs in background thread)"""
+        # Prevent multiple simultaneous checks
+        if self.device_check_running:
+            return
+            
+        self.device_check_running = True
+        self.device_status_label.setText("⏳ Checking...")
+        self.device_details_label.setText("Please wait...")
+        
+        # Create worker thread
+        class DeviceCheckWorker(QThread):
+            result_ready = Signal(dict)
+            
+            def __init__(self, appdir):
+                super().__init__()
+                self.appdir = appdir
+                
+            def run(self):
+                try:
+                    if self.appdir and os.path.exists(os.path.join(self.appdir, "check_device.py")):
+                        python_exe = os.path.join(self.appdir, "usr", "bin", "python3")
+                        check_script = os.path.join(self.appdir, "check_device.py")
+                        env = os.environ.copy()
+                        
+                        result = subprocess.run(
+                            [python_exe, check_script],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,  # Reduced from 10 to 5 seconds
+                            env=env
+                        )
+                        
+                        output = result.stdout
+                        self.result_ready.emit({'success': True, 'output': output})
+                    else:
+                        self.result_ready.emit({'success': False, 'error': 'not_appimage'})
+                except subprocess.TimeoutExpired:
+                    self.result_ready.emit({'success': False, 'error': 'timeout'})
+                except Exception as e:
+                    self.result_ready.emit({'success': False, 'error': str(e)})
+        
+        # Start worker
+        self.device_worker = DeviceCheckWorker(self.appdir)
+        self.device_worker.result_ready.connect(self._handle_device_check_result)
+        self.device_worker.finished.connect(lambda: setattr(self, 'device_check_running', False))
+        self.device_worker.start()
+    
+    def _handle_device_check_result(self, result):
+        """Handle device check result from worker thread"""
+        if not result['success']:
+            error = result['error']
+            if error == 'timeout':
+                self.device_status_label.setText("⏱️ Check Timeout")
+                self.device_details_label.setText("Device check took too long")
+            elif error == 'not_appimage':
+                self.device_status_label.setText("⚠️ Check Not Available")
+                self.device_details_label.setText("Running outside AppImage")
+            else:
+                self.device_status_label.setText("❌ Check Failed")
+                self.device_details_label.setText(f"Error: {error[:50]}")
+            return
+        
+        output = result['output']
+        
+        if "GPU MODE ENABLED" in output:
+            gpu_name = "Unknown GPU"
+            for line in output.split('\n'):
+                if "Device Name:" in line:
+                    gpu_name = line.split("Device Name:")[1].strip()
+                    break
+            
+            backend = "Unknown"
+            if "Backend: CUDA" in output:
+                backend = "CUDA (NVIDIA)"
+            elif "Backend: ROCm" in output:
+                backend = "ROCm (AMD)"
+            
+            self.device_status_label.setText("✅ GPU MODE ENABLED")
+            self.device_status_label.setStyleSheet("""
+                background-color: #4CAF50; 
+                color: white; 
+                padding: 10px; 
+                border-radius: 5px;
+                font-weight: bold;
+            """)
+            self.device_details_label.setText(f"{gpu_name}\n{backend}")
+            
+        elif "CPU MODE" in output:
+            if "/dev/kfd is not accessible" in output or "NOT in 'render' group" in output:
+                self.device_status_label.setText("⚠️ CPU MODE (GPU Needs Setup)")
+                self.device_status_label.setStyleSheet("""
+                    background-color: #FF9800; 
+                    color: white; 
+                    padding: 10px; 
+                    border-radius: 5px;
+                    font-weight: bold;
+                """)
+                self.device_details_label.setText(
+                    "AMD GPU detected but not accessible\n"
+                    "Run: ./appimage --amd-setup to fix"
+                )
+            else:
+                self.device_status_label.setText("ℹ️ CPU MODE")
+                self.device_status_label.setStyleSheet("""
+                    background-color: #2196F3; 
+                    color: white; 
+                    padding: 10px; 
+                    border-radius: 5px;
+                    font-weight: bold;
+                """)
+                self.device_details_label.setText("No GPU acceleration\n(Slower performance)")
+        else:
+            self.device_status_label.setText("❓ Unknown Status")
+            self.device_status_label.setStyleSheet("padding: 10px;")
+            self.device_details_label.setText("Could not determine device status")
             
     def start_comfyui(self):
         """Start ComfyUI process"""
@@ -599,17 +775,37 @@ class ComfyUIManager(QMainWindow):
             host = self.host_input.text()
             port = self.port_input.value()
             
+            # Set up database path in writable location
+            user_config_dir = Path.home() / ".config" / "ComfyUI"
+            db_dir = user_config_dir / "db"
+            db_dir.mkdir(parents=True, exist_ok=True)
+            db_path = db_dir / "comfyui.db"
+            
             cmd = [
                 python_exe, main_py,
                 "--listen", host,
                 "--port", str(port),
-                "--user-directory", str(Path.home() / ".config" / "ComfyUI")
+                "--user-directory", str(user_config_dir),
+                "--database-url", f"sqlite:///{db_path}"
             ]
+            
+            # Add extra model paths config if it exists
+            model_config = user_config_dir / "extra_model_paths.yaml"
+            if model_config.exists():
+                cmd.extend(["--extra-model-paths-config", str(model_config)])
+                self.log_display.append(f"📁 Using model paths: {model_config}")
             
             if self.auto_open_browser_check.isChecked():
                 cmd.append("--auto-launch")
+            
+            # Update URL label when starting
+            self.update_url_label()
                 
             self.log_display.append(f"📋 Command: {' '.join(cmd[:3])} --listen {host} --port {port} [...]")
+            if host == "0.0.0.0":
+                self.log_display.append("🌐 Network access enabled - accessible from LAN")
+            else:
+                self.log_display.append("🔒 Localhost only - secure mode")
                 
             # Setup environment for self-contained execution
             env = os.environ.copy()
@@ -635,12 +831,22 @@ class ComfyUIManager(QMainWindow):
                 # Set Python environment to use bundled libraries
                 env['PYTHONHOME'] = os.path.join(self.appdir, "usr")
                 
-                # Build PYTHONPATH with all necessary directories
-                site_packages = os.path.join(self.appdir, "usr", "lib", python_version, "site-packages")
-                stdlib = os.path.join(self.appdir, "usr", "lib", python_version)
-                app_dir = os.path.join(self.appdir, "app")
-                python_paths = [site_packages, stdlib, app_dir]
-                env['PYTHONPATH'] = ":".join(python_paths)
+                # Build PYTHONPATH - preserve existing PYTHONPATH from AppRun (for multi-backend support)
+                # AppRun sets PYTHONPATH with backend-specific PyTorch directory first
+                existing_pythonpath = env.get('PYTHONPATH', '')
+                
+                if existing_pythonpath:
+                    # AppRun already configured PYTHONPATH (includes backend selector)
+                    # Just preserve it as-is
+                    env['PYTHONPATH'] = existing_pythonpath
+                else:
+                    # Fallback: build PYTHONPATH for non-AppImage environments
+                    site_packages = os.path.join(self.appdir, "usr", "lib", python_version, "site-packages")
+                    stdlib = os.path.join(self.appdir, "usr", "lib", python_version)
+                    app_dir = os.path.join(self.appdir, "app")
+                    python_paths = [site_packages, stdlib, app_dir]
+                    env['PYTHONPATH'] = ":".join(python_paths)
+                
                 env['LD_LIBRARY_PATH'] = os.path.join(self.appdir, "usr", "lib")
                 
                 self.log_display.append(f"   PYTHONHOME: {env['PYTHONHOME']}")
@@ -831,12 +1037,79 @@ class ComfyUIManager(QMainWindow):
         """Refresh log display"""
         # Could add real log file reading here
         pass
+    
+    def update_url_label(self):
+        """Update the URL label based on current host/port settings"""
+        host = self.host_input.text()
+        port = self.port_input.value()
+        
+        if host == "0.0.0.0":
+            # Network mode - show both local and network URLs
+            import socket
+            try:
+                # Get local IP address
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+                self.url_label.setText(f"Local: http://127.0.0.1:{port} | Network: http://{local_ip}:{port}")
+            except:
+                self.url_label.setText(f"http://0.0.0.0:{port} (Network mode)")
+        else:
+            # Localhost only
+            self.url_label.setText(f"http://{host}:{port}")
+    
+    def on_network_access_changed(self, state):
+        """Handle network access checkbox change"""
+        if state == Qt.Checked:
+            # Network access enabled
+            self.host_input.setText("0.0.0.0")
+            self.network_info_label.setText("🌐 Network access enabled - Accessible from LAN")
+            self.network_info_label.setStyleSheet(
+                "padding: 10px; "
+                "background-color: #f57c00; "
+                "color: white; "
+                "border-radius: 4px; "
+                "font-weight: bold; "
+                "font-size: 11pt;"
+            )
+            
+            # Update URL label to show network access
+            self.update_url_label()
+            
+            # Show security warning
+            QMessageBox.warning(
+                self,
+                "Network Access Enabled",
+                "⚠️ Security Warning:\n\n"
+                "ComfyUI will be accessible from any device on your local network.\n"
+                "There is no password protection.\n\n"
+                "Only use this on trusted networks (home/office WiFi).\n"
+                "Do NOT use on public WiFi or untrusted networks.\n\n"
+                "You'll need to restart ComfyUI for this change to take effect."
+            )
+        else:
+            # Localhost only
+            self.host_input.setText("127.0.0.1")
+            self.network_info_label.setText("🔒 Localhost only (secure)")
+            self.network_info_label.setStyleSheet(
+                "padding: 10px; "
+                "background-color: #2e7d32; "
+                "color: white; "
+                "border-radius: 4px; "
+                "font-weight: bold; "
+                "font-size: 11pt;"
+            )
+            
+            # Update URL label back to localhost
+            self.update_url_label()
         
     def save_settings(self):
         """Save application settings"""
         self.settings.setValue("autostart", self.autostart_check.isChecked())
         self.settings.setValue("minimize_tray", self.minimize_tray_check.isChecked())
         self.settings.setValue("auto_browser", self.auto_open_browser_check.isChecked())
+        self.settings.setValue("network_access", self.network_access_check.isChecked())
         self.settings.setValue("host", self.host_input.text())
         self.settings.setValue("port", self.port_input.value())
         
@@ -847,8 +1120,38 @@ class ComfyUIManager(QMainWindow):
         self.autostart_check.setChecked(self.settings.value("autostart", False, type=bool))
         self.minimize_tray_check.setChecked(self.settings.value("minimize_tray", True, type=bool))
         self.auto_open_browser_check.setChecked(self.settings.value("auto_browser", True, type=bool))
-        self.host_input.setText(self.settings.value("host", "127.0.0.1", type=str))
         self.port_input.setValue(self.settings.value("port", 8188, type=int))
+        
+        # Load network_access and set host based on it (don't load host from settings)
+        network_enabled = self.settings.value("network_access", False, type=bool)
+        self.network_access_check.setChecked(network_enabled)
+        
+        # Set host based on network access setting (override saved host value)
+        if network_enabled:
+            self.host_input.setText("0.0.0.0")
+            self.network_info_label.setText("🌐 Network access enabled - Accessible from LAN")
+            self.network_info_label.setStyleSheet(
+                "padding: 10px; "
+                "background-color: #f57c00; "
+                "color: white; "
+                "border-radius: 4px; "
+                "font-weight: bold; "
+                "font-size: 11pt;"
+            )
+        else:
+            self.host_input.setText("127.0.0.1")
+            self.network_info_label.setText("🔒 Localhost only (secure)")
+            self.network_info_label.setStyleSheet(
+                "padding: 10px; "
+                "background-color: #2e7d32; "
+                "color: white; "
+                "border-radius: 4px; "
+                "font-weight: bold; "
+                "font-size: 11pt;"
+            )
+        
+        # Update URL label
+        self.update_url_label()
         
         # Auto-start if enabled
         if self.autostart_check.isChecked():
@@ -943,8 +1246,8 @@ def main():
     # Set comprehensive application identification (must be done before creating windows)
     app.setApplicationName("ComfyUI Manager")
     app.setApplicationDisplayName("ComfyUI Manager")
-    # Version 2.4.2: Fixed CUDA auto-detection for systems without NVIDIA drivers
-    app.setApplicationVersion("2.4.2")
+    # Version 2.5.8: Auto-migration of config files, complete model folder support
+    app.setApplicationVersion("2.5.8")
     app.setOrganizationName("ComfyUI")
     # Set desktop file name to fix X11/Wayland WM_CLASS (prevents "python3" in taskbar)
     app.setDesktopFileName("ComfyUI.desktop")

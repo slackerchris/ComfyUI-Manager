@@ -1,0 +1,35 @@
+================================================================================
+  ComfyUI AppImage v2.5.8 - Code Review Complete
+================================================================================
+
+SYSTEMATIC REVIEW COMPLETED
+  Files Reviewed: 2 (AppRun, comfyui_qt_manager.py)
+  Lines Reviewed: 1767 lines
+  Bugs Found: 8
+
+CRITICAL BUGS FOUND (BLOCKING RELEASE):
+  [1] Missing t2i_adapter in YAML template (mkdir creates it, YAML doesn't define it)
+  [2] No directory creation validation (silent failures possible)
+  [3] No backup error handling (could lose config on backup failure)
+
+MEDIUM PRIORITY:
+  [4] Hard-coded version strings (should use VERSION file)
+  [5] Unquoted $FINAL_ARGS variable (intentional but risky)
+
+LOW PRIORITY:
+  [6] TOCTOU race condition in config read/backup
+  [7] Exit code not propagated in fallback path
+  [8] Inconsistent timeout values (5s vs 3s)
+
+RECOMMENDATION:
+  Must fix bugs #1, #2, #3 before building v2.5.8
+  Should fix bugs #4, #5 for maintainability
+  Can defer bugs #6, #7, #8 (low impact)
+
+DETAILED ANALYSIS:
+  See: BUG_LOG_v2.5.8.md
+
+NEXT ACTION:
+  Fix critical bugs then proceed to testing
+
+================================================================================
