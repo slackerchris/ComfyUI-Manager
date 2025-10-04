@@ -2,7 +2,7 @@
 
 ## v2.5.9 (October 4, 2025) - Critical AppRun Fix 🔧
 
-**Status**: Fixed and tested (AppImage build and launch testing pending)
+**Status**: BETA - Code fixed, untested build
 
 ### Critical Bug Fix
 
@@ -29,7 +29,7 @@
 
 ## v2.5.8 (October 3, 2025) - Architecture Refactor & Critical Bug Fixes 🏗️
 
-**Status**: ⚠️ BROKEN - Do not use (Bug #10 prevents launch) ⚠️
+**Status**: ⚠️ BROKEN - Never tested, Bug #10 prevents launch ⚠️
 
 ### Critical Architectural Fix
 **Single Source of Truth (`model_folders.py`)**
