@@ -63,3 +63,9 @@ appimage/get-pip.py
 !appimage/build-scripts/
 !appimage/README.md
 README-original.md
+
+# Backup directories (v2.5.8 cleanup)
+appimage/ComfyUI.AppDir.cuda-only-backup/
+appimage/*.AppDir.*backup*/
+appimage/ComfyUI.AppDir/comfyui_qt_manager.py.bak
+appimage/ComfyUI.AppDir/comfyui_qt_manager.py.before_fixes
