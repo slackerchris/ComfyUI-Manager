@@ -1,32 +1,7 @@
 #!/usr/bin/env bash
 
 # Enhanced AppImage AppRun script for ComfyUI
-# Features: USER_CONFIG_DIR="${HOME}/.config/ComfyUI"
-USER_MODELS_DIR="${HOME}/.local/share/ComfyUI"
-
-# Create critical directories with validation (Bug #2 fix)
-if ! mkdir -p "$USER_CONFIG_DIR" "$USER_MODELS_DIR" 2>/dev/null; then
-    echo "❌ ERROR: Failed to create directories in $HOME" >&2
-    echo "   Config: $USER_CONFIG_DIR" >&2
-    echo "   Models: $USER_MODELS_DIR" >&2
-    echo "   Check permissions and disk space" >&2
-    exit 1
-fi
-
-# Verify directories actually exist and are writable
-if [ ! -w "$USER_CONFIG_DIR" ] || [ ! -w "$USER_MODELS_DIR" ]; then
-    echo "❌ ERROR: Directories not writable" >&2
-    echo "   Config dir: $USER_CONFIG_DIR" >&2
-    echo "   Models dir: $USER_MODELS_DIR" >&2
-    echo "   Check permissions on $HOME" >&2
-    exit 1
-fi
-
-# Create ALL model subdirectories that ComfyUI supports
-# Using single source of truth from model_folders.py
-while IFS= read -r folder; do
-    mkdir -p "$USER_MODELS_DIR/$folder"
-done < <("${APPDIR}/usr/bin/python3" "${APPDIR}/model_folders.py" --list)ction, configuration wizard, AI video support
+# Features: Multi-backend PyTorch support, network detection, configuration wizard, AI video support
 
 # Get the directory where the AppImage is located
 HERE="$(dirname "$(readlink -f "${0}")")"
@@ -104,12 +79,30 @@ export HSA_ENABLE_SDMA=0  # Disable SDMA for better stability
 # Create user directories if they don't exist
 USER_CONFIG_DIR="${HOME}/.config/ComfyUI"
 USER_MODELS_DIR="${HOME}/.local/share/ComfyUI"
-mkdir -p "$USER_CONFIG_DIR" "$USER_MODELS_DIR"
+
+# Create critical directories with validation (Bug #2 fix)
+if ! mkdir -p "$USER_CONFIG_DIR" "$USER_MODELS_DIR" 2>/dev/null; then
+    echo "❌ ERROR: Failed to create directories in $HOME" >&2
+    echo "   Config: $USER_CONFIG_DIR" >&2
+    echo "   Models: $USER_MODELS_DIR" >&2
+    echo "   Check permissions and disk space" >&2
+    exit 1
+fi
+
+# Verify directories actually exist and are writable
+if [ ! -w "$USER_CONFIG_DIR" ] || [ ! -w "$USER_MODELS_DIR" ]; then
+    echo "❌ ERROR: Directories not writable" >&2
+    echo "   Config dir: $USER_CONFIG_DIR" >&2
+    echo "   Models dir: $USER_MODELS_DIR" >&2
+    echo "   Check permissions on $HOME" >&2
+    exit 1
+fi
 
 # Create ALL model subdirectories that ComfyUI supports
 # Using single source of truth from model_folders.py
-MODEL_FOLDERS=$("${APPDIR}/usr/bin/python3" "${APPDIR}/model_folders.py" --bash)
-mkdir -p "$USER_MODELS_DIR"/{$MODEL_FOLDERS}
+while IFS= read -r folder; do
+    mkdir -p "$USER_MODELS_DIR/$folder" 2>/dev/null || true
+done < <("${APPDIR}/usr/bin/python3" "${APPDIR}/model_folders.py" --list)
 
 # Create writable directories for ComfyUI components that need write access
 COMFYUI_TEMP_DIR="${USER_CONFIG_DIR}/temp"

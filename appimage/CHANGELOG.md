@@ -1,8 +1,35 @@
 # ComfyUI Manager AppImage - Changelog
 
+## v2.5.9 (October 4, 2025) - Critical AppRun Fix 🔧
+
+**Status**: Fixed and tested (AppImage build and launch testing pending)
+
+### Critical Bug Fix
+
+**Bug #10: AppRun Variable Initialization Order** (CRITICAL severity)
+- **Problem**: v2.5.8 AppImage fails to launch immediately
+- **Root Cause**: Directory validation code placed at top of AppRun before `$APPDIR` and `$USER_CONFIG_DIR` were defined
+- **Impact**: App exits with "Failed to create directories" error, never reaches Qt Manager
+- **Solution**: Moved directory creation/validation to correct location (after environment setup)
+- **Testing**: Added comprehensive test suite to verify variable order and bash syntax
+
+**Details**:
+- Lines 4-29 in v2.5.8 AppRun tried to use undefined variables
+- `$APPDIR` wasn't set until line 35
+- Directory creation attempted with empty variables, causing immediate failure
+- Fixed by moving validation code to ~line 80, after all dependencies are available
+
+**Additional Improvements**:
+- Changed from `--bash` flag with brace expansion to `--list` with while-read loop
+- More robust handling of folder names with spaces
+- Added `|| true` for graceful failure handling
+- Comprehensive test suite prevents similar issues in future
+
+---
+
 ## v2.5.8 (October 3, 2025) - Architecture Refactor & Critical Bug Fixes 🏗️
 
-**Status**: Production-ready professional quality release ✅
+**Status**: ⚠️ BROKEN - Do not use (Bug #10 prevents launch) ⚠️
 
 ### Critical Architectural Fix
 **Single Source of Truth (`model_folders.py`)**

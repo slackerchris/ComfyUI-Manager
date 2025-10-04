@@ -232,7 +232,7 @@ class ComfyUIManager(QMainWindow):
         
     def setup_ui(self):
         """Setup the main user interface"""
-        self.setWindowTitle("ComfyUI Manager v2.5.8 Universal")
+        self.setWindowTitle("ComfyUI Manager v2.5.9 Universal")
         self.setMinimumSize(800, 600)
         
         # Apply clean, system-consistent styling
@@ -515,7 +515,7 @@ class ComfyUIManager(QMainWindow):
         self.tray_icon.setIcon(icon)
         
         # Set detailed tooltip for system identification  
-        self.tray_icon.setToolTip("ComfyUI Manager v2.5.8 Universal\nProfessional Desktop Interface for ComfyUI")
+        self.tray_icon.setToolTip("ComfyUI Manager v2.5.9 Universal\nProfessional Desktop Interface for ComfyUI")
         
         # Show tray icon
         self.tray_icon.show()
@@ -590,7 +590,7 @@ class ComfyUIManager(QMainWindow):
             
             # Update tray tooltip with running status
             if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.setToolTip(f"ComfyUI Manager v2.5.8 Universal - Running ({count} processes)\nProfessional Desktop Interface for ComfyUI")
+                self.tray_icon.setToolTip(f"ComfyUI Manager v2.5.9 Universal - Running ({count} processes)\nProfessional Desktop Interface for ComfyUI")
             
         else:
             self.status_label.setText("🔴 Not Running")
@@ -600,7 +600,7 @@ class ComfyUIManager(QMainWindow):
             
             # Update tray tooltip with stopped status
             if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.setToolTip("ComfyUI Manager v2.5.8 Universal - Stopped\nProfessional Desktop Interface for ComfyUI")
+                self.tray_icon.setToolTip("ComfyUI Manager v2.5.9 Universal - Stopped\nProfessional Desktop Interface for ComfyUI")
             
     def update_ui_state(self):
         """Update UI button states based on process status"""
@@ -1246,8 +1246,8 @@ def main():
     # Set comprehensive application identification (must be done before creating windows)
     app.setApplicationName("ComfyUI Manager")
     app.setApplicationDisplayName("ComfyUI Manager")
-    # Version 2.5.8: Auto-migration of config files, complete model folder support
-    app.setApplicationVersion("2.5.8")
+    # Version 2.5.9: Bug #10 fix - correct AppRun variable initialization order
+    app.setApplicationVersion("2.5.9")
     app.setOrganizationName("ComfyUI")
     # Set desktop file name to fix X11/Wayland WM_CLASS (prevents "python3" in taskbar)
     app.setDesktopFileName("ComfyUI.desktop")
