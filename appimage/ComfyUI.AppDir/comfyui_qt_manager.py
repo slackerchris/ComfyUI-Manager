@@ -863,29 +863,17 @@ class ComfyUIManager(QMainWindow):
             
             self.log_display.append("✅ Environment configured, starting process...")
             
-            # Start process with careful isolation
-            try:
-                # Try with process isolation first
-                self.comfyui_process = subprocess.Popen(
-                    cmd, 
-                    cwd=working_dir,
-                    env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,  # Start in new process group
-                    preexec_fn=os.setsid if hasattr(os, 'setsid') else None  # Unix process isolation
-                )
-            except Exception as preexec_error:
-                self.log_display.append(f"⚠️ Process isolation failed, trying without: {preexec_error}")
-                # Fallback: start without preexec_fn
-                self.comfyui_process = subprocess.Popen(
-                    cmd, 
-                    cwd=working_dir,
-                    env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True
-                )
+            # Start process with process isolation
+            # Note: start_new_session=True is sufficient for process isolation
+            # (it does the same as os.setsid, using both causes errors)
+            self.comfyui_process = subprocess.Popen(
+                cmd, 
+                cwd=working_dir,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
             
             self.log_display.append(f"✅ Started ComfyUI (PID: {self.comfyui_process.pid})")
             self.status_bar.showMessage(f"ComfyUI starting (PID: {self.comfyui_process.pid})")
